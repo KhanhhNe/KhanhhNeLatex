@@ -30,7 +30,7 @@ The browser tests include a real WASM PDF compile/export, worker cancellation/er
 - IndexedDB device drafts save after a 300 ms pause and flush on document switches/visibility changes. Pending/failed saves are explicit; pending writes warn before navigation. Export `.tex` for backups, especially before clearing browser data or changing devices. Device drafts are not encrypted; use a trusted personal device.
 - Cloud saves are **explicit**, using the Save button or Ctrl+S. Typing/compiling never sends document source to the API. Sign-in is optional for local editing, compiling and exports.
 - D1 stores source in a `TEXT` column. Every document operation is owner-scoped. Atomic revision checks reject stale cloud updates rather than overwriting them. Up to 100 cloud documents per account.
-- Accounts use case-insensitive 3-32 character usernames and 12-128 character passwords. Salted scrypt (N=16384,r=8,p=1), hashed random 256-bit session tokens, seven-day HttpOnly/SameSite=Strict cookies (Secure on HTTPS), strict mutation origins, parameterized Drizzle queries, request limits and D1-backed auth throttling. No password reset/recovery is provided in this minimal version.
+- Accounts use case-insensitive 3-32 character usernames and 8-128 character passwords. Salted scrypt (N=16384,r=8,p=1), hashed random 256-bit session tokens, seven-day HttpOnly/SameSite=Strict cookies (Secure on HTTPS), strict mutation origins, parameterized Drizzle queries, request limits and D1-backed auth throttling. No password reset/recovery is provided in this minimal version.
 
 ## Browser compilation and limits
 
@@ -60,7 +60,7 @@ npm run db:local
 npm run dev:worktree
 ```
 
-`dev:worktree` selects an available localhost port, creates a per-worktree `.wrangler/worktree-state` local D1 store, and writes an ignored per-worktree `.dev.vars` for same-origin requests. Run `npm run db:worktree` in each worktree to initialize its isolated database. No remote database or production credentials are used by local development. Use a single `dev:worktree <port>` argument to choose a port.
+`dev:worktree` selects an available localhost port, creates a per-worktree `.wrangler/worktree-state` local D1 store, and supplies `APP_ORIGIN` as a local Wrangler variable. It ignores `.env`, removes Cloudflare/OpenAI credentials from Wrangler's process environment, and does not modify `.dev.vars`. Run `npm run db:worktree` in each worktree to initialize its isolated database. No remote database or production credentials are used by local development. Use a single `dev:worktree <port>` argument to choose a port.
 
 ## Tests and collaboration
 

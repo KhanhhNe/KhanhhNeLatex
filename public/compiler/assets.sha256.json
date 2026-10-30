@@ -12,8 +12,8 @@
     },
     {
       "path": "/compiler/NOTICE.txt",
-      "size": 2150,
-      "sha256": "a6244b36bd868a54256d254870f06cdd58cc5b93d8c85ab402fc4e3899128b05"
+      "size": 2108,
+      "sha256": "b7ea315f7c502686c4c7a973f3518ddf72bdbac7ddcb364fba4e86fac024769a"
     },
     {
       "path": "/compiler/swiftlatex-source.tar.gz",
@@ -367,8 +367,8 @@
     },
     {
       "path": "/compiler/worker.js",
-      "size": 1064,
-      "sha256": "cece3ddb5b02b24d68a4ac191579482b077b0abfcd906658588c9c6a3fa06749"
+      "size": 1038,
+      "sha256": "d9de853a332ba3a65067577792e5e7acf7eb1b3b5d65a628e437d630f627a00b"
     }
   ]
 }
