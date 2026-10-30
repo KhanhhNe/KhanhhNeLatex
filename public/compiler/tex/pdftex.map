@@ -11,6 +11,21 @@ lbrm1000 SFRM1000 " T2BEncoding ReEncodeFont " <cm-super-t2b.enc <sfrm1000.pfb
 lcrm1000 SFRM1000 " T2CEncoding ReEncodeFont " <cm-super-t2c.enc <sfrm1000.pfb
 tcrm1000 SFRM1000 " TS1Encoding ReEncodeFont " <cm-super-ts1.enc <sfrm1000.pfb
 rxrm1000 SFRM1000 " X2Encoding ReEncodeFont " <cm-super-x2.enc <sfrm1000.pfb
+ec-lmbx10 LMRoman10-Bold "enclmec ReEncodeFont" <lm-ec.enc <lmbx10.pfb
+ec-lmbx12 LMRoman12-Bold "enclmec ReEncodeFont" <lm-ec.enc <lmbx12.pfb
+ec-lmbxi10 LMRoman10-BoldItalic "enclmec ReEncodeFont" <lm-ec.enc <lmbxi10.pfb
+ec-lmcsc10 LMRomanCaps10-Regular "enclmec ReEncodeFont" <lm-ec.enc <lmcsc10.pfb
+ec-lmr10 LMRoman10-Regular "enclmec ReEncodeFont" <lm-ec.enc <lmr10.pfb
+ec-lmr12 LMRoman12-Regular "enclmec ReEncodeFont" <lm-ec.enc <lmr12.pfb
+ec-lmr17 LMRoman17-Regular "enclmec ReEncodeFont" <lm-ec.enc <lmr17.pfb
+ec-lmri10 LMRoman10-Italic "enclmec ReEncodeFont" <lm-ec.enc <lmri10.pfb
+ec-lmri12 LMRoman12-Italic "enclmec ReEncodeFont" <lm-ec.enc <lmri12.pfb
+lmmi10 LMMathItalic10-Regular "enclmmathit ReEncodeFont" <lm-mathit.enc <lmmi10.pfb
+lmmi7 LMMathItalic7-Regular "enclmmathit ReEncodeFont" <lm-mathit.enc <lmmi7.pfb
+lmex10 LMMathExtension10-Regular "enclmmathex ReEncodeFont" <lm-mathex.enc <lmex10.pfb
+lmsy10 LMMathSymbols10-Regular "enclmmathsy ReEncodeFont" <lm-mathsy.enc <lmsy10.pfb
+lmsy6 LMMathSymbols6-Regular "enclmmathsy ReEncodeFont" <lm-mathsy.enc <lmsy6.pfb
+rm-lmr8 LMRoman8-Regular "enclmrm ReEncodeFont" <lm-rm.enc <lmr8.pfb
 cmbx10 CMBX10 <cmbx10.pfb
 cmbx12 CMBX12 <cmbx12.pfb
 cmex10 CMEX10 <cmex10.pfb

@@ -34,9 +34,26 @@ Computer Modern (Knuth license): https://ctan.org/pkg/cm
 Computer Modern Type 1 fonts (SIL OFL): https://ctan.org/pkg/amsfonts
 CM-Super fonts and encoding (GPL v2+ with font exception):
 https://ctan.org/pkg/cm-super
+LaTeX base (including fontenc, latexsym, color and verbatim; LPPL 1.3c+):
+https://ctan.org/pkg/latex-base
+LaTeX tools (including tabularx; LPPL 1.3c+):
+https://ctan.org/pkg/latex-tools
+Babel (LPPL 1.3c+): https://ctan.org/pkg/babel
+Hyperref and its support packages (LPPL 1.3c+):
+https://ctan.org/pkg/hyperref
+Fullpage (LPPL): https://ctan.org/pkg/fullpage
+Titlesec (MIT): https://ctan.org/pkg/titlesec
+Enumitem (MIT): https://ctan.org/pkg/enumitem
+MarVoSym (OFL): https://ctan.org/pkg/marvosym
+Latin Modern fonts and reduced font-map entries (GUST Font License):
+https://ctan.org/pkg/lm
+https://www.gust.org.pl/fonts/licenses/GUST-FONT-LICENSE.txt
+glyphtounicode.tex from LCDF-typetools (GNU GPL):
+https://ctan.org/pkg/lcdf-typetools
 
 Package acquisition mirror: https://texlive.texlyre.org/
 The deployment makes NO requests to that mirror or any external package server.
-The font map was reduced to entries for the bundled fonts; font files, package
-files and format are unmodified. Asset hashes are in assets.sha256.json.
+The reduced pdftex.map contains entries only for bundled fonts; the added
+Latin Modern entries are from the upstream lm.map. Font files, package files
+and format are unmodified. Asset hashes are in assets.sha256.json.
 Only the subset documented in the Help dialog and README is supported.

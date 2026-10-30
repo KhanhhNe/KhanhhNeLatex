@@ -8,6 +8,36 @@ const source = String.raw`\documentclass{article}
 See section \ref{intro}. \[E=mc^2\]
 \end{document}`;
 
+const resumeSource = String.raw`\documentclass[11pt,letterpaper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\input{glyphtounicode}
+\begin{document}
+\section{Experience}\label{experience}
+\begin{tabularx}{\textwidth}{lX}
+2026 & Example role \\
+\end{tabularx}
+\begin{itemize}[leftmargin=*]
+\item Local PDF compilation with \textcolor{NavyBlue}{T1 text} and \(x^2\).
+\end{itemize}
+See section \ref{experience}.
+\begin{verbatim}
+Local source remains local.
+\end{verbatim}
+\end{document}`;
+
 async function loadCompiler(page) {
   const body = await readFile(new URL('../../src/compiler.js', import.meta.url), 'utf8');
   await page.route('**/compiler-client.js', route => route.fulfill({ contentType: 'text/javascript', body }));
@@ -17,6 +47,24 @@ async function loadCompiler(page) {
     window.LatexCompiler = LatexCompiler;
   });
 }
+
+test('real worker compiles the bundled T1 resume package subset', async ({ page }) => {
+  await loadCompiler(page);
+  const result = await page.evaluate(async source => {
+    const compiler = new window.LatexCompiler();
+    const output = await compiler.compile(source);
+    const bytes = new Uint8Array(output.pdf);
+    return {
+      magic: new TextDecoder().decode(bytes.slice(0, 5)),
+      length: bytes.length,
+      log: output.log,
+    };
+  }, resumeSource);
+  expect(result.magic).toBe('%PDF-');
+  expect(result.length).toBeGreaterThan(5000);
+  expect(result.log).not.toContain('undefined references');
+  expect(result.log).not.toContain('Emergency stop');
+});
 
 test('real workers compile PDF, recompile, cancel and recover from LaTeX failure', async ({ page }) => {
   const externalRequests = [];
