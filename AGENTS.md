@@ -10,6 +10,7 @@ This is an original React + Express-on-Cloudflare Workers application. Read `REA
 - Changes to `server/schema.js` require a reviewed additive/expand migration committed from `npm run db:generate`. Never reset/push production schema. Deploy first additive schema before dependent code; drop/contract only in a later release.
 - Never stage `.env`, `.dev.vars`, local D1/`.wrangler`, auth credentials, build/test output or account tokens. `git check-ignore .env` must succeed. Never put secrets in `VITE_*`, assets, source archives or logs.
 - Production migrations and Worker versions deploy only through the protected `master` CI/CD after PR merge. Never manually deploy or apply remote production migrations.
+- The GitHub Actions Cloudflare token is account-owned, non-expiring, limited to Workers Scripts Edit and D1 Edit, and has no IP restriction. The deploy workflow verifies active status and absent expiry before migrations. For routine rotation, update the GitHub Actions secret, verify a successful deployment with the replacement, then revoke the old token; if compromised, replace and revoke immediately, then rerun verification. Never print or persist token values.
 - Keep license notices, compiler source availability and per-asset SHA-256 manifest synchronized when updating vendored TeX assets.
 
 ## Multiple independent contributors
