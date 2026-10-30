@@ -8,7 +8,7 @@ test('Monaco preserves controlled editing, selection, undo, full clipboard and o
     if (/^https?:/.test(request.url()) && new URL(request.url()).origin !== new URL(test.info().project.use.baseURL).origin)
       external.push(request.url());
   });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/#workspace', { waitUntil: 'domcontentloaded' });
   await editorReady(page);
   await expect(page.locator('.latex-editor')).toHaveAttribute('data-language', 'latex');
   const source = '\\section{Original}\n% a comment\nText with $x^2$.';
@@ -28,7 +28,9 @@ test('Monaco preserves controlled editing, selection, undo, full clipboard and o
   await page.evaluate(() => navigator.clipboard.writeText('\\textbf{Full paste}\nsecond line'));
   await sourceEditor(page).press('Control+a');
   await sourceEditor(page).press('Control+v');
+  await expect(page.locator('.view-lines')).toContainText('Full paste');
   await expectSource(page, '\\textbf{Full paste}\nsecond line');
+  await expect(page.getByRole('status').filter({ hasText: 'Saved on this device' })).toBeVisible();
   await page.reload();
   await expectSource(page, '\\textbf{Full paste}\nsecond line');
   await sourceEditor(page).press('Shift+Tab');
@@ -38,10 +40,10 @@ test('Monaco preserves controlled editing, selection, undo, full clipboard and o
 });
 
 test('Monaco rejects oversized and non-text edits without losing accepted source or undo', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/#workspace', { waitUntil: 'domcontentloaded' });
   await fillSource(page, 'accepted source');
   await page.keyboard.insertText('x'.repeat(100001));
-  await expect(page.getByRole('alert')).toContainText('last edit was not accepted');
+  await expect(page.locator('.latex-editor-error')).toContainText('last edit was not accepted');
   await expectSource(page, 'accepted source');
   await sourceEditor(page).press('Control+End');
   await page.keyboard.insertText('\u0000');
@@ -56,7 +58,7 @@ test('loading Monaco leaves an immediately editable fallback and preserves its s
   let release;
   const held = new Promise(resolve => { release = resolve; });
   await page.route(/\/assets\/monaco-[^/]+\.js$/, async route => { await held; await route.continue(); });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/#workspace', { waitUntil: 'domcontentloaded' });
   const fallback = page.locator('.latex-editor-fallback');
   await expect(fallback).toBeEnabled();
   await fallback.fill('fallback edit');

@@ -163,3 +163,5 @@ kbd{font-size:.76rem;color:#555b68}
   .panels{min-height:480px}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.workspace-view{display:flex;flex-direction:column;flex:1;min-height:0}
+.projects-back{flex-shrink:0;width:44px;padding:0;font-size:23px}

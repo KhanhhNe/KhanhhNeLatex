@@ -10,7 +10,12 @@ export async function editorReady(page) {
 export async function fillSource(page, text) {
   await editorReady(page);
   await sourceEditor(page).press('Control+a');
-  await page.keyboard.insertText(text);
+  if (text.length > 10000) {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.evaluate(text => navigator.clipboard.writeText(text), text);
+    await sourceEditor(page).press('Control+v');
+    await expect(page.locator('.view-lines')).toContainText(text.slice(0, 30));
+  } else await page.keyboard.insertText(text);
 }
 
 export async function readSource(page) {

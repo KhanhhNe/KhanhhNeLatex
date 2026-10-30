@@ -16,6 +16,7 @@ export default function LatexEditor({
   const editor = useRef(null);
   const fallback = useRef(null);
   const replacing = useRef(false);
+  const handoff = useRef(null);
   const latest = useRef(null);
   latest.current = { value, onChange, onSave, onCompile, readOnly, loading, ariaLabel };
   const [ready, setReady] = useState(false);
@@ -23,6 +24,27 @@ export default function LatexEditor({
   const [attempt, setAttempt] = useState(0);
 
   function shortcut(event) {
+    if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const instance = editor.current;
+      if (instance) {
+        const lines = instance.getSelections().reduce((count, range) => count + range.endLineNumber - range.startLineNumber + 1, 0);
+        if (instance.getModel().getValueLength() + lines * 2 > 100000) {
+          event.preventDefault();
+          event.stopPropagation();
+          setError('Source must be valid text, at most 100,000 characters. The last edit was not accepted.');
+        }
+      } else if (fallback.current && !loading && !readOnly) {
+        event.preventDefault();
+        const input = fallback.current;
+        if (input.value.length - (input.selectionEnd - input.selectionStart) + 2 <= 100000) {
+          const position = input.selectionStart + 2;
+          const next = input.value.slice(0, input.selectionStart) + '  ' + input.value.slice(input.selectionEnd);
+          onChange(next);
+          requestAnimationFrame(() => input.setSelectionRange(position, position));
+        }
+      }
+      return;
+    }
     if (event.key === 'Tab' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
       const controls = [...document.querySelectorAll('button,a[href],input,textarea,[tabindex="0"]')]
         .filter(control => !control.disabled && control.getClientRects().length && !control.closest('[inert]'));
@@ -51,7 +73,6 @@ export default function LatexEditor({
       const current = latest.current;
       const focused = document.activeElement === fallback.current;
       const selection = fallback.current && [fallback.current.selectionStart, fallback.current.selectionEnd];
-      host.current.hidden = false;
       model = monaco.editor.createModel(current.value, 'latex');
       model.setEOL(monaco.editor.EndOfLineSequence.LF);
       instance = monaco.editor.create(host.current, {
@@ -110,11 +131,7 @@ export default function LatexEditor({
       });
       resize.observe(host.current);
       instance.layout();
-      if (focused) {
-        instance.focus();
-        if (selection) instance.setSelection(monaco.Range.fromPositions(
-          model.getPositionAt(selection[0]), model.getPositionAt(selection[1])));
-      }
+      handoff.current = focused ? selection : null;
       setReady(true);
     }).catch(reason => {
       if (!disposed) setError(`The enhanced editor could not load. Plain text editing is still available. ${reason.message}`);
@@ -134,6 +151,16 @@ export default function LatexEditor({
   useEffect(() => {
     const instance = editor.current;
     if (!instance) return;
+    instance.layout();
+    if (ready && handoff.current) {
+      const [start, end] = handoff.current.map(offset => instance.getModel().getPositionAt(offset));
+      instance.focus();
+      instance.setSelection({
+        startLineNumber: start.lineNumber, startColumn: start.column,
+        endLineNumber: end.lineNumber, endColumn: end.column,
+      });
+      handoff.current = null;
+    }
     instance.updateOptions({ readOnly: readOnly || loading, ariaLabel });
     const model = instance.getModel();
     if (model.getValue() !== value) {

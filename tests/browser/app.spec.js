@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { sourceEditor, editorReady, fillSource, expectSource } from './source-editor.js';
 
 const source = String.raw`\documentclass{article}
 \usepackage{amsmath}
@@ -19,22 +20,22 @@ test('browser editor compiles real PDF locally, exports and preserves drafts wit
       externalRequests.push(request.url());
     if (request.url().includes('/api/') && request.method() !== 'GET') writes.push(request.url());
   });
-  await page.goto('/');
+  await page.goto('/#workspace');
   const editor = page.getByRole('textbox', { name: 'LaTeX source', exact: true });
-  await expect(editor).toBeEnabled();
-  await editor.fill(source);
+  await editorReady(page);
+  await fillSource(page, source);
   await page.getByRole('textbox', { name: 'Document title' }).fill('Browser test');
   await expect(page.getByRole('status').filter({ hasText: 'Saved on this device' })).toBeVisible();
   const exportSource = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export .tex' }).click();
   expect(await readFile(await (await exportSource).path(), 'utf8')).toBe(source);
   await page.reload();
-  await expect(editor).toHaveValue(source);
+  await expectSource(page, source);
   const before = Date.now();
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await editor.press('Control+End');
   await editor.press('Space');
-  await expect(editor).toHaveValue(source + ' ');
+  await expectSource(page, source + ' ');
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });
   await expect(page.locator('.preview-status')).toContainText('Preview is out of date');
   const iframe = page.locator('iframe[title="Compiled PDF"]');
@@ -52,25 +53,25 @@ test('browser editor compiles real PDF locally, exports and preserves drafts wit
 });
 
 test('invalid input, cancellation, document selection and mobile layout behave safely', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/#workspace');
   const editor = page.getByRole('textbox', { name: 'LaTeX source', exact: true });
-  await expect(editor).toBeEnabled();
+  await editorReady(page);
   await page.locator('input[type=file]').setInputFiles({ name: 'bad.tex', mimeType: 'text/plain', buffer: Buffer.from([0, 1, 2, 255]) });
-  await expect(page.getByRole('alert')).toContainText('not valid UTF-8');
+  await expect(page.locator('.error-banner')).toContainText('not valid UTF-8');
   await page.getByRole('button', { name: 'Dismiss error' }).click();
-  await editor.fill(String.raw`\documentclass{article}\begin{document}\notacommand\end{document}`);
+  await fillSource(page, String.raw`\documentclass{article}\begin{document}\notacommand\end{document}`);
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await expect(page.getByText('LaTeX could not compile.', { exact: false })).toBeVisible({ timeout: 60000 });
   await expect(page.locator('.compile-log')).toContainText('Undefined control sequence');
-  await editor.fill(String.raw`\documentclass{article}\begin{document}\loop\iftrue\repeat\end{document}`);
+  await fillSource(page, String.raw`\documentclass{article}\begin{document}\loop\iftrue\repeat\end{document}`);
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByText('Compilation cancelled.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'New document' }).click();
   await expect(page.getByRole('navigation', { name: 'Local documents' }).getByRole('button')).toHaveCount(2);
-  await editor.fill('latest unsaved change');
+  await fillSource(page, 'latest unsaved change');
   await page.getByRole('navigation', { name: 'Local documents' }).getByRole('button').first().click();
-  await expect(editor).toHaveValue('latest unsaved change');
+  await expectSource(page, 'latest unsaved change');
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(editor).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
