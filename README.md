@@ -60,7 +60,7 @@ npm run db:local
 npm run dev:worktree
 ```
 
-`dev:worktree` selects an available localhost port, creates a per-worktree `.wrangler/worktree-state` local D1 store, and writes an ignored per-worktree `.dev.vars` for same-origin requests. Run `npm run db:worktree` in each worktree to initialize its isolated database. No remote database or production credentials are used by local development. Use a single `dev:worktree <port>` argument to choose a port.
+`dev:worktree` selects an available localhost port, creates a per-worktree `.wrangler/worktree-state` local D1 store, and supplies `APP_ORIGIN` as a local Wrangler variable. It ignores `.env`, removes Cloudflare/OpenAI credentials from Wrangler's process environment, and does not modify `.dev.vars`. Run `npm run db:worktree` in each worktree to initialize its isolated database. No remote database or production credentials are used by local development. Use a single `dev:worktree <port>` argument to choose a port.
 
 ## Tests and collaboration
 

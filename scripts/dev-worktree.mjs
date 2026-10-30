@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,10 +19,19 @@ const port = requested ? Number(requested) : await new Promise((resolvePort, rej
 });
 if (port < 1024 || port > 65535) throw new Error('Choose an available port from 1024-65535.');
 const origin = `http://127.0.0.1:${port}`;
-await writeFile(join(root, '.dev.vars'), `APP_ORIGIN=${origin}\n`);
-const child = spawn('npx', ['wrangler', 'dev', '--ip', '127.0.0.1', '--port', String(port), '--persist-to', directory], {
-  cwd: root, stdio: 'inherit', shell: process.platform === 'win32',
-  env: process.env,
+const childEnvironment = {
+  ...process.env,
+  CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false',
+};
+for (const name of ['OPENAI_API_KEY', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'GH_TOKEN']) {
+  delete childEnvironment[name];
+}
+const child = spawn(process.execPath, [
+  join(root, 'node_modules', 'wrangler', 'bin', 'wrangler.js'),
+  'dev', '--ip', '127.0.0.1', '--port', String(port), '--persist-to', directory,
+  '--var', `APP_ORIGIN:${origin}`,
+], {
+  cwd: root, stdio: 'inherit', env: childEnvironment,
 });
 child.on('error', error => { console.error('Could not launch Wrangler:', error.message); process.exitCode = 1; });
 child.on('exit', (code, signal) => {
