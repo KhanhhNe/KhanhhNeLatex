@@ -323,13 +323,16 @@ function App() {
       compileDuration.current = result.timings.compilationMs;
       setStale(active.current.source !== shownPdf.current.source);
       setLog(result.log);
-      setCompileState(`Compiled in your browser · ${elapsed(result.timings.compilationMs)}${result.timings.initializationMs > 0 ? ` · engine startup ${elapsed(result.timings.initializationMs)}` : ''}`);
+      setCompileState(`Compiled in your browser · ${elapsed(result.timings.compilationMs)}`);
       if (result.timings.initializationMs > 0) setEngineState(`Engine initialized · ${elapsed(result.timings.initializationMs)}`);
       if (reveal) setTab('preview');
     } catch (reason) {
       if (run !== compileRequest.current) return;
-      setCompileState(reason.message);
-      setLog(reason.log || '');
+      setCompileState(reason.message === 'Compilation cancelled.' ? reason.message
+        : reason.message.startsWith('LaTeX') ? 'LaTeX could not compile. See compilation log.'
+          : reason.message.startsWith('Compilation timed out') ? 'Compilation timed out. See compilation log.'
+            : 'Compilation failed. See compilation log.');
+      setLog(reason.log || reason.message);
     } finally { if (run === compileRequest.current) setCompiling(false); }
   }
   async function sync() {
@@ -496,15 +499,18 @@ function App() {
           </section>
           <section id="preview-panel" className={`preview-panel ${tab === 'preview' ? 'mobile-active' : ''}`} aria-label="PDF preview">
             <div className="panel-toolbar preview-toolbar"><span>Preview <span className="preview-tag">PDF</span></span><div className="preview-actions">
-              {pdf && <button className="quiet" onClick={() => {
+              <button className="quiet" disabled={!pdf} onClick={() => {
                 const latest = generatedPdf.current;
                 download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
-              }}>Export PDF ↓</button>}
+              }}>Export PDF ↓</button>
               <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>
                 <span className={compiling ? 'spinner' : ''}>{compiling ? '' : '▷'}</span>{compiling ? 'Cancel' : 'Compile'}
               </button></div>
             </div>
-            <div className="preview-status" role="status" aria-atomic="true"><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
+            <div className="preview-status">
+              <span className="preview-status-reserve" aria-hidden="true" />
+              <div className="preview-status-message" role="status" aria-atomic="true"><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
+            </div>
             <div className="pdf-area">{pdf ? <div className="pdf-stack">{[pdf, pendingPdf].filter(Boolean).map(viewer =>
               <iframe key={viewer.url} title={viewer.url === pdf.url ? 'Compiled PDF' : 'Loading compiled PDF'}
                 className={viewer.url === pdf.url ? 'pdf-viewer' : `pdf-viewer pending ${viewer.ready ? 'ready' : ''}`}
@@ -518,7 +524,7 @@ function App() {
               <div className="empty-preview"><div className="paper-illustration"><span /> <span /> <span /><b>∑</b><span /> <span /></div>
                 <h1>From a thought<br />to a paper.</h1><p>Your words, beautifully typeset.<br />Your first preview is on its way.</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}>Compile your document <span>↗</span></button><small>Runs privately in a browser worker.</small></div>}
             </div>
-            {log && <details className="compile-log" open={compileState.startsWith('LaTeX')}><summary>Compilation log</summary><pre>{log}</pre></details>}
+            <div className="compile-log-slot"><details className="compile-log" open={compileState.includes('See compilation log.')}><summary>Compilation log</summary><pre>{log || 'No compilation log available.'}</pre></details></div>
             <div className="preview-footer"><span>{engineState}</span><label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label><button className="quiet" onClick={() => setShowHelp(true)}>Supported LaTeX ↗</button></div>
           </section>
         </div>

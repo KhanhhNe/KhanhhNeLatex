@@ -242,6 +242,94 @@ test('PDF handoff retains the old viewer until replacement loads, cancels stale 
   await expect(active).toHaveCount(0);
 });
 
+for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 390, height: 844 }]) {
+  test(`preview geometry stays stable through compile, loading, ready, cancellation and errors at ${viewport.width}px`, async ({ page }) => {
+    await fakeEngine(page);
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+    await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+    if (viewport.width < 1050) await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
+    const geometry = () => page.evaluate(() => Object.fromEntries([
+      '.preview-toolbar', '.preview-status', '.pdf-area', '.compile-log-slot', '.preview-footer',
+      '.preview-actions .compile-button', '.preview-actions .quiet', '.live-preview', '.editor-container',
+    ].map(selector => {
+      const box = document.querySelector(selector).getBoundingClientRect();
+      return [selector, { x: box.x, y: box.y, width: box.width, height: box.height }];
+    })));
+    const stable = await geometry();
+    const assertStable = async () => {
+      expect(await geometry()).toEqual(stable);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
+    };
+    await page.evaluate(() => { window.engineDelay = 200; window.holdViewer = true; });
+    await page.locator('textarea').evaluate(input => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+      setter.call(input, 'geometry replacement');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+    await assertStable();
+    const pending = page.locator('iframe[title="Loading compiled PDF"]');
+    await expect(pending).toHaveCount(1);
+    await assertStable();
+    await pending.dispatchEvent('load');
+    await expect(pending).toHaveCount(0);
+    await assertStable();
+    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await assertStable();
+    await page.evaluate(() => { window.engineFail = true; });
+    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await expect(page.locator('.preview-status')).toContainText('LaTeX could not compile');
+    await expect(page.locator('.compile-log')).toHaveAttribute('open', '');
+    await assertStable();
+    await page.locator('.compile-log summary').click();
+    await assertStable();
+    await page.evaluate(() => { window.engineFail = false; });
+    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+    await assertStable();
+  });
+}
+
+test('desktop panes fill available width while tablet and enlarged text reflow without clipping controls', async ({ page }) => {
+  await fakeEngine(page);
+  await page.goto('/');
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }]) {
+    await page.setViewportSize(viewport);
+    const sizes = await page.evaluate(() => {
+      const box = selector => document.querySelector(selector).getBoundingClientRect();
+      const editor = box('.editor-panel'), preview = box('.preview-panel'), sidebar = box('.sidebar'), pdf = box('.pdf-area');
+      return { editor: editor.width, preview: preview.width, sidebar: sidebar.width, right: preview.right, pdfHeight: pdf.height, viewport: innerWidth, scroll: document.documentElement.scrollWidth };
+    });
+    expect(sizes.scroll).toBe(viewport.width);
+    expect(sizes.right).toBe(viewport.width);
+    expect(sizes.editor + sizes.preview + sizes.sidebar).toBeCloseTo(viewport.width, 0);
+    expect(Math.abs(sizes.editor - sizes.preview)).toBeLessThan(1);
+    expect(sizes.editor).toBeGreaterThan(viewport.width * .4);
+    expect(sizes.pdfHeight).toBeGreaterThan(viewport.height * (viewport.width >= 1920 ? .65 : .5));
+  }
+  for (const viewport of [{ width: 1024, height: 768 }, { width: 960, height: 540 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await expect(sourceEditor(page)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
+    await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
+    await expect(page.getByRole('checkbox', { name: 'Live preview' })).toBeVisible();
+    expect(await page.locator('.pdf-area').evaluate(element => element.getBoundingClientRect().width)).toBe(viewport.width);
+    if (viewport.height <= 600) expect(await page.locator('.pdf-area').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(240);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+  }
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.evaluate(() => { document.documentElement.style.fontSize = '34px'; });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1920);
+  await expect(page.getByRole('checkbox', { name: 'Live preview' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save to account' })).toBeVisible();
+});
+
 test('mobile controls have readable text, 44px targets, labels and narrow/zoom reflow', async ({ page }) => {
   await fakeEngine(page);
   await page.setViewportSize({ width: 390, height: 844 });

@@ -74,6 +74,29 @@ kbd{font-size:.76rem;color:#555b68}
 .live-preview{display:flex;align-items:center;gap:8px;cursor:pointer;color:#4f5362;min-height:44px;font-size:.88rem;max-width:100%}
 .live-preview input{margin:0;width:20px;height:20px;accent-color:#68517f;cursor:pointer}
 .source-compile{display:none}
+.preview-actions .compile-button{min-width:110px}
+.preview-status{display:grid;grid-template-columns:1fr;flex-shrink:0}
+.preview-status-reserve,.preview-status-message{grid-area:1/1}
+.preview-status-reserve{visibility:hidden;pointer-events:none}
+.preview-status-reserve::before{content:"Compiled in your browser \00b7 60.00 s / Loading new preview... / Preview is out of date"}
+.preview-status-message{display:block;align-self:center;overflow-wrap:anywhere}
+.preview-status-message .status-dot,.preview-status-message .working-dot{display:inline-block;margin-right:6px;vertical-align:middle}
+.compile-log-slot{position:relative;min-height:48px;flex-shrink:0;background:#fff}
+.compile-log-slot .compile-log{position:absolute;bottom:0;left:0;right:0;max-height:min(50dvh,350px);margin:0;padding:0 14px;z-index:3;box-shadow:0 -4px 12px #30384a08}
+.compile-log-slot .compile-log summary{min-height:48px}
+.compile-log-slot .compile-log[open]{border:1px solid #d5d0df}
+.preview-footer>span{flex:1;min-width:0}
+@media(min-width:1051px){
+  .topbar{min-height:64px}
+  .sidebar{width:220px;padding:18px 12px 12px}
+  .sidebar-heading{flex-wrap:wrap}
+  .document-toolbar{min-height:96px;padding:12px 16px}
+  .panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .panel-toolbar{min-height:56px;padding:6px 14px}
+  .editor-container textarea{padding:16px;font-size:1rem}
+  .editor-footer,.preview-footer{min-height:52px;padding:2px 12px}
+  .pdf-area{padding:0 12px 12px}
+}
 .compile-log{max-height:35%;font-size:.88rem;color:#4f5362}
 .compile-log summary{min-height:44px;padding:10px 0}
 .compile-log pre{font-size:.82rem;color:#303747}
@@ -135,4 +158,8 @@ kbd{font-size:.76rem;color:#555b68}
   .error-banner{font-size:.88rem;padding:6px 12px}
 }
 @media(max-width:480px){.brand-name{display:none}.brand{flex:1}.brand-mark{width:30px;height:32px}.top-actions .account{max-width:150px;overflow:hidden;text-overflow:ellipsis}.preview-actions{gap:4px}.preview-actions .quiet{padding:10px 8px}}
+@media(max-height:600px){
+  .app{height:auto;min-height:100dvh}
+  .panels{min-height:480px}
+}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
