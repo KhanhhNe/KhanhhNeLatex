@@ -43,6 +43,11 @@ The Gaussian integral is
 const makeDraft = (source = starter, title = 'Untitled paper') => ({
   id: crypto.randomUUID(), title, source, updated_at: Date.now(), cloudId: null, revision: null, owner: null, dirty: true,
 });
+const elapsed = milliseconds => milliseconds < 1000 ? `${Math.round(milliseconds)} ms` : `${(milliseconds / 1000).toFixed(2)} s`;
+function samePdf(first, second) {
+  const a = new Uint8Array(first), b = new Uint8Array(second);
+  return a.length === b.length && a.every((byte, index) => byte === b[index]);
+}
 
 function App() {
   const [documents, setDocuments] = useState([]);
@@ -57,10 +62,13 @@ function App() {
   const [compileState, setCompileState] = useState('Ready when you are');
   const [log, setLog] = useState('');
   const [pdf, setPdf] = useState(null);
+  const [pendingPdf, setPendingPdf] = useState(null);
   const [stale, setStale] = useState(false);
   const [tab, setTab] = useState('source');
   const [sidebar, setSidebar] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [live, setLive] = useState(false);
+  const [engineState, setEngineState] = useState('Preparing browser engine...');
   const editor = useRef(null);
   const fileInput = useRef(null);
   const active = useRef(null);
@@ -68,12 +76,65 @@ function App() {
   const pending = useRef(false);
   const saving = useRef(Promise.resolve());
   const persisted = useRef(new WeakSet());
-  const switching = useRef(false);
+  const selectionRequest = useRef(0);
   const generation = useRef(0);
-  const compiler = useRef(new LatexCompiler());
+  const compiler = useRef(null);
+  if (!compiler.current) compiler.current = new LatexCompiler();
   const pdfRef = useRef(null);
+  const shownPdf = useRef(null);
+  const generatedPdf = useRef(null);
+  const pendingViewer = useRef(null);
+  const retiredUrls = useRef([]);
+  const compileRequest = useRef(0);
+  const liveTimer = useRef(null);
+  const liveEnabled = useRef(false);
+  const compiledSource = useRef(null);
+  const requestedSource = useRef(null);
+  const compileDuration = useRef(0);
+  const cloudTimings = useRef(new Map());
 
   function notice(reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  function discardPendingViewer() {
+    const viewer = pendingViewer.current;
+    if (!viewer) return;
+    clearTimeout(viewer.timeout);
+    clearTimeout(viewer.swap);
+    cancelAnimationFrame(viewer.frame);
+    URL.revokeObjectURL(viewer.url);
+    pendingViewer.current = null;
+    setPendingPdf(null);
+  }
+  function revealPreview(url) {
+    const viewer = pendingViewer.current;
+    if (!viewer || viewer.url !== url || viewer.loaded) return;
+    viewer.loaded = true;
+    clearTimeout(viewer.timeout);
+    viewer.frame = requestAnimationFrame(() => {
+      viewer.frame = requestAnimationFrame(() => {
+        if (pendingViewer.current !== viewer || viewer.request !== compileRequest.current) return;
+        setPendingPdf({ ...viewer, ready: true });
+        viewer.swap = setTimeout(() => {
+          if (pendingViewer.current !== viewer || viewer.request !== compileRequest.current) return;
+          retiredUrls.current.push(pdfRef.current);
+          pdfRef.current = viewer.url;
+          shownPdf.current = viewer;
+          pendingViewer.current = null;
+          setPdf(viewer);
+          setPendingPdf(null);
+          setStale(active.current.source !== viewer.source);
+        }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200);
+      });
+    });
+  }
+  useEffect(() => {
+    for (const url of retiredUrls.current) if (url) URL.revokeObjectURL(url);
+    retiredUrls.current = [];
+  }, [pdf]);
+  function savedLabel(document) {
+    const timing = cloudTimings.current.get(document.id);
+    return document.dirty ? 'Saved on this device'
+      : `Saved to your account${timing === undefined ? '' : ` · ${elapsed(timing)} round trip`}`;
+  }
   async function persist(document = active.current) {
     if (!document) return;
     if (document === active.current) clearTimeout(timer.current);
@@ -86,7 +147,7 @@ function App() {
       persisted.current.add(document);
       if (active.current === document) {
         pending.current = false;
-        setSaveState(document.dirty ? 'Saved on this device' : 'Saved to your account');
+        setSaveState(savedLabel(document));
       }
       setDocuments(list => [document, ...list.filter(item => item.id !== document.id)]);
     } catch (reason) { notice(reason); setSaveState('Local save failed - export your source'); throw reason; }
@@ -103,32 +164,43 @@ function App() {
     active.current = next;
     pending.current = true;
     setSaveState('Saving on this device...');
-    setStale(true);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => { persist(next).catch(() => {}); }, 300);
+    if ('source' in patch) {
+      setStale(shownPdf.current?.source !== next.source);
+      scheduleLive();
+    }
   }
   async function select(document, force = false) {
-    if (switching.current) return;
+    const selection = ++selectionRequest.current;
     if (!force && document.id === active.current?.id) { setSidebar(false); return; }
-    switching.current = true;
     try {
       await flush();
+      if (selection !== selectionRequest.current) return;
+      clearTimeout(liveTimer.current);
+      discardPendingViewer();
+      compileRequest.current++;
       compiler.current.cancel();
+      setCompiling(false);
       generation.current++;
       active.current = document;
       setCurrent(document);
       setDocuments(list => [document, ...list.filter(item => item.id !== document.id)]);
+      compiledSource.current = null;
+      requestedSource.current = null;
       setStale(false);
       setLog('');
       setCompileState('Ready when you are');
       if (pdfRef.current) URL.revokeObjectURL(pdfRef.current);
       pdfRef.current = null;
+      shownPdf.current = null;
+      generatedPdf.current = null;
       setPdf(null);
       setSidebar(false);
-      setSaveState(document.dirty ? 'Saved on this device' : 'Saved to your account');
+      setSaveState(persisted.current.has(document) ? savedLabel(document) : 'Saving on this device...');
+      compile({ reveal: false });
       await persist(document);
     } catch { /* The visible save error keeps the unsaved draft open. */ }
-    finally { switching.current = false; }
   }
   async function newDocument(source, title) {
     const document = makeDraft(source, title);
@@ -141,6 +213,15 @@ function App() {
   }
   useEffect(() => {
     let disposed = false;
+    try {
+      liveEnabled.current = localStorage.getItem('folio-live-preview') === 'true';
+      setLive(liveEnabled.current);
+    } catch { notice(new Error('Could not read the live preview preference. This session starts with live preview off.')); }
+    compiler.current.warmup().then(timing => {
+      if (!disposed) setEngineState(`Engine initialized · ${elapsed(timing.initializationMs)}`);
+    }).catch(reason => {
+      if (!disposed && reason.message !== 'Compilation cancelled.') notice(reason);
+    });
     drafts.all().then(async list => {
       const document = list.sort((a, b) => b.updated_at - a.updated_at)[0] || makeDraft();
       if (!list.length) await drafts.put(document);
@@ -150,6 +231,7 @@ function App() {
       setCurrent(document);
       setDocuments(list.length ? list : [document]);
       setSaveState('Saved on this device');
+      compile({ reveal: false });
     }).catch(notice);
     api('/me').then(data => {
       if (!disposed) { setUser(data.user); refreshCloud().catch(notice); }
@@ -165,35 +247,90 @@ function App() {
     return () => {
       disposed = true;
       clearTimeout(timer.current);
+      clearTimeout(liveTimer.current);
+      compileRequest.current++;
       compiler.current.cancel();
+      discardPendingViewer();
       if (pdfRef.current) URL.revokeObjectURL(pdfRef.current);
+      for (const url of retiredUrls.current) if (url) URL.revokeObjectURL(url);
       window.removeEventListener('beforeunload', unload);
       document.removeEventListener('visibilitychange', hidden);
     };
   }, []);
 
-  async function compile() {
-    if (!active.current || compiler.current.active) return;
+  function scheduleLive() {
+    clearTimeout(liveTimer.current);
+    if (!liveEnabled.current || !active.current) return;
+    if (compiler.current.active && requestedSource.current === active.current.source) return;
+    if (!compiler.current.active && compiledSource.current === active.current.source) return;
+    const delay = Math.max(700, Math.min(2000, compileDuration.current * 1.5));
+    liveTimer.current = setTimeout(() => compile({ reveal: false }), delay);
+  }
+  function toggleLive(enabled) {
+    liveEnabled.current = enabled;
+    setLive(enabled);
+    try { localStorage.setItem('folio-live-preview', String(enabled)); }
+    catch { notice(new Error('Could not save the live preview preference. It will only apply to this session.')); }
+    if (enabled) scheduleLive();
+    else clearTimeout(liveTimer.current);
+  }
+  function cancelCompile() {
+    clearTimeout(liveTimer.current);
+    discardPendingViewer();
+    compileRequest.current++;
+    compiler.current.cancel();
+    setCompiling(false);
+    setCompileState('Compilation cancelled.');
+    setLog('');
+  }
+  async function compile({ reveal = true } = {}) {
+    clearTimeout(liveTimer.current);
+    discardPendingViewer();
+    if (!active.current) return;
     const snapshot = active.current;
-    const run = generation.current;
+    const run = ++compileRequest.current;
+    requestedSource.current = snapshot.source;
     setCompiling(true);
     setLog('');
-    setError('');
+    setCompileState('Preparing compilation...');
     try {
-      const result = await compiler.current.compile(snapshot.source, setCompileState);
-      if (run !== generation.current) return;
-      if (pdfRef.current) URL.revokeObjectURL(pdfRef.current);
-      pdfRef.current = URL.createObjectURL(new Blob([result.pdf], { type: 'application/pdf' }));
-      setPdf({ url: pdfRef.current, bytes: result.pdf, title: snapshot.title });
-      setStale(active.current.source !== snapshot.source);
+      const result = await compiler.current.compile(snapshot.source, status => {
+        if (run === compileRequest.current && /^(Loading browser engine|Typesetting|Resolving)/.test(status)) setCompileState(status);
+      });
+      if (run !== compileRequest.current) return;
+      const next = { bytes: result.pdf, title: snapshot.title, source: snapshot.source, request: run };
+      generatedPdf.current = next;
+      if (shownPdf.current && samePdf(shownPdf.current.bytes, result.pdf)) {
+        shownPdf.current = { ...shownPdf.current, ...next };
+        setPdf(shownPdf.current);
+      } else {
+        next.url = URL.createObjectURL(new Blob([result.pdf], { type: 'application/pdf' }));
+        if (!shownPdf.current) {
+          pdfRef.current = next.url;
+          shownPdf.current = next;
+          setPdf(next);
+        } else {
+          pendingViewer.current = next;
+          next.timeout = setTimeout(() => {
+            if (pendingViewer.current !== next) return;
+            discardPendingViewer();
+            notice(new Error('The PDF viewer did not finish loading. Your previous preview is still available; export the new PDF or compile again.'));
+          }, 15000);
+          setPendingPdf(next);
+        }
+      }
+      compiledSource.current = snapshot.source;
+      compileDuration.current = result.timings.compilationMs;
+      setStale(active.current.source !== shownPdf.current.source);
       setLog(result.log);
-      setCompileState('Compiled in your browser');
-      setTab('preview');
+      setCompileState(`Compiled in your browser · ${elapsed(result.timings.compilationMs)}${result.timings.initializationMs > 0 ? ` · engine startup ${elapsed(result.timings.initializationMs)}` : ''}`);
+      if (result.timings.initializationMs > 0) setEngineState(`Engine initialized · ${elapsed(result.timings.initializationMs)}`);
+      if (reveal) setTab('preview');
     } catch (reason) {
-      if (run !== generation.current) return;
+      if (run !== compileRequest.current) return;
       setCompileState(reason.message);
       setLog(reason.log || '');
-    } finally { setCompiling(false); }
+    } finally { if (run === compileRequest.current) setCompiling(false); }
   }
   async function sync() {
     if (!active.current) return;
@@ -201,9 +338,13 @@ function App() {
     if (busy) return;
     setBusy(true); setError('');
     const snapshot = active.current;
+    let localSaved = false;
     try {
       await persist(snapshot);
+      localSaved = true;
+      setSaveState('Saving to your account...');
       let saved;
+      const started = performance.now();
       if (snapshot.cloudId && snapshot.owner === user.id) {
         const data = await api(`/documents/${snapshot.cloudId}`, {
           title: snapshot.title, source: snapshot.source, revision: snapshot.revision,
@@ -213,22 +354,28 @@ function App() {
         const { document } = await api('/documents', { title: snapshot.title, source: snapshot.source });
         saved = { ...snapshot, cloudId: document.id, revision: document.revision, owner: user.id };
       }
+      cloudTimings.current.set(snapshot.id, performance.now() - started);
       const next = active.current.id === snapshot.id
         ? { ...active.current, cloudId: saved.cloudId, owner: user.id, revision: saved.revision, dirty: active.current !== snapshot }
         : { ...saved, dirty: false };
       if (active.current.id === next.id) active.current = next;
       await persist(next);
       await refreshCloud();
-    } catch (reason) { notice(reason); }
+    } catch (reason) {
+      notice(reason);
+      if (localSaved && active.current?.id === snapshot.id) setSaveState('Cloud save failed - device draft kept');
+    }
     finally { setBusy(false); }
   }
   async function openCloud(item) {
+    const request = ++selectionRequest.current;
     try {
       const { document } = await api(`/documents/${item.id}`);
+      if (request !== selectionRequest.current) return;
       const local = active.current?.cloudId === item.id && active.current.owner === user.id
         ? active.current : documents.find(doc => doc.cloudId === item.id && doc.owner === user.id);
       if (local?.dirty && !window.confirm('Replace this device draft with the cloud version? Export the local draft first if you need it.')) return;
-      const next = { ...document, id: local?.id || crypto.randomUUID(), cloudId: document.id, owner: user.id, dirty: false };
+      const next = { ...document, id: local?.id || crypto.randomUUID(), updated_at: Date.now(), cloudId: document.id, owner: user.id, dirty: false };
       await select(next, true);
     } catch (reason) { notice(reason); }
   }
@@ -261,12 +408,14 @@ function App() {
     catch (reason) { notice(reason); }
   }
   const actions = useRef({});
-  actions.current = { compile, sync };
+  actions.current = { compile, sync, modal: Boolean(auth || showHelp) };
   useEffect(() => {
     const keys = event => {
+      if (actions.current.modal) return;
       if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) {
         event.preventDefault();
-        if (event.key === 'Enter') actions.current.compile(); else actions.current.sync();
+        actions.current.compile();
+        if (event.key !== 'Enter') actions.current.sync();
       }
       if (event.key === 'Escape') { setAuth(null); setShowHelp(false); setSidebar(false); }
     };
@@ -275,8 +424,9 @@ function App() {
   }, []);
 
   return <div className="app">
+    <div className="app-content" inert={auth || showHelp ? true : undefined}>
     <header className="topbar">
-      <button className="icon mobile-menu" aria-label="Toggle documents" onClick={() => setSidebar(!sidebar)}>☰</button>
+      <button className="icon mobile-menu" aria-label="Toggle documents" aria-expanded={sidebar} aria-controls="document-sidebar" onClick={() => setSidebar(!sidebar)}>☰</button>
       <a className="brand" href="/" aria-label="KhanhhNeLatex home"><span className="brand-mark">k</span><span className="brand-name">KhanhhNeLatex</span><span className="brand-label">A LATEX WORKSPACE</span></a>
       <div className="top-actions"><span className="local-badge"><i /> Local-first</span>
         <button className="quiet" onClick={() => setShowHelp(true)}>Help</button>
@@ -288,13 +438,13 @@ function App() {
     </header>
     {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
     <div className="workspace">
-      <aside className={`sidebar ${sidebar ? 'open' : ''}`}>
+      <aside id="document-sidebar" className={`sidebar ${sidebar ? 'open' : ''}`}>
         <div className="sidebar-heading"><span>YOUR WORKSPACE</span><span className="tiny">TEXT ONLY</span></div>
         <button className="new-document" onClick={() => newDocument()} disabled={busy}>＋ <span>New document</span><kbd>N</kbd></button>
         <div className="section-label">On this device <span>{documents.length}</span></div>
         <nav aria-label="Local documents">{documents.map(doc =>
           <button key={doc.id} className={`document-item ${current?.id === doc.id ? 'selected' : ''}`} onClick={() => select(doc)} disabled={busy}>
-            <span className="file-icon">T<span>E</span>X</span><span className="document-name">{doc.title}<small>{doc.cloudId ? 'Linked to account' : 'Local draft'}</small></span>
+            <span className="file-icon" aria-hidden="true">T<span>E</span>X</span><span className="document-name">{doc.title}<small>{doc.cloudId ? 'Linked to account' : 'Local draft'}</small></span>
           </button>)}</nav>
         {user && <><div className="section-label">Your cloud documents <span>{cloud.length}</span></div><nav aria-label="Cloud documents">
           {cloud.map(item => <button key={item.id} className="document-item" disabled={busy} onClick={() => openCloud(item)}><span className="file-icon">☁</span><span className="document-name">{item.title}<small>Open saved version</small></span></button>)}
@@ -315,20 +465,20 @@ function App() {
                 if (!active.current?.title.trim()) { event.target.value = 'Untitled paper'; update({ title: 'Untitled paper' }); }
                 persist().catch(() => {});
               }} />
-            <span className="save-state" role="status"><i />{saveState}</span>
+            <span className="save-state" role="status" aria-atomic="true"><i />{saveState}</span>
           </div>
           <div className="document-actions">
             <button className="quiet" disabled={!current} onClick={() => download(active.current.source, `${active.current.title || 'document'}.tex`, 'text/plain;charset=utf-8')}>Export .tex</button>
             <button className="save-button" disabled={!current || busy} onClick={sync}>{busy ? 'Saving...' : 'Save to account'}</button>
           </div>
         </div>
-        <div className="mobile-tabs"><button className={tab === 'source' ? 'active' : ''} onClick={() => setTab('source')}>Source</button><button className={tab === 'preview' ? 'active' : ''} onClick={() => setTab('preview')}>PDF preview</button></div>
+        <div className="mobile-tabs"><button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => setTab('source')}>Source</button><button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>PDF preview</button></div>
         <div className="panels">
-          <section className={`editor-panel ${tab === 'source' ? 'mobile-active' : ''}`} aria-label="LaTeX source editor">
+          <section id="source-panel" className={`editor-panel ${tab === 'source' ? 'mobile-active' : ''}`} aria-label="LaTeX source editor">
             <div className="panel-toolbar"><span><span className="code-symbol">⌘</span> main.tex</span><span className="tiny">LATEX</span></div>
             <div className="editor-container">
               <textarea ref={editor} key={`${current?.id || 'loading'}:${generation.current}`} defaultValue={current?.source || ''} disabled={!current}
-                aria-label="LaTeX source" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={100000}
+                aria-label="LaTeX source" aria-describedby="source-shortcuts" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={100000}
                 onChange={event => update({ source: event.target.value })}
                 onKeyDown={event => {
                   if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -340,60 +490,95 @@ function App() {
                   }
                 }} />
             </div>
-            <div className="editor-footer"><span>UTF-8 <span className="separator">/</span> Text only</span><span>Ctrl ↵ to compile</span></div>
+            <div className="editor-footer"><span>UTF-8 / Text only</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>
           </section>
-          <section className={`preview-panel ${tab === 'preview' ? 'mobile-active' : ''}`} aria-label="PDF preview">
+          <section id="preview-panel" className={`preview-panel ${tab === 'preview' ? 'mobile-active' : ''}`} aria-label="PDF preview">
             <div className="panel-toolbar preview-toolbar"><span>Preview <span className="preview-tag">PDF</span></span><div className="preview-actions">
-              {pdf && <button className="quiet" onClick={() => download(pdf.bytes, `${pdf.title || 'document'}.pdf`, 'application/pdf')}>Export PDF ↓</button>}
-              <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} disabled={!current} onClick={compiling ? () => compiler.current.cancel() : compile}>
+              {pdf && <button className="quiet" onClick={() => {
+                const latest = generatedPdf.current;
+                download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
+              }}>Export PDF ↓</button>}
+              <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>
                 <span className={compiling ? 'spinner' : ''}>{compiling ? '' : '▷'}</span>{compiling ? 'Cancel' : 'Compile'}
               </button></div>
             </div>
-            <div className="preview-status" role="status"><span className={compiling ? 'working-dot' : 'status-dot'} />{compileState}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
-            <div className="pdf-area">{pdf ? <iframe title="Compiled PDF" src={`${pdf.url}#toolbar=0&navpanes=0`} /> :
+            <div className="preview-status" role="status" aria-atomic="true"><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
+            <div className="pdf-area">{pdf ? <div className="pdf-stack">{[pdf, pendingPdf].filter(Boolean).map(viewer =>
+              <iframe key={viewer.url} title={viewer.url === pdf.url ? 'Compiled PDF' : 'Loading compiled PDF'}
+                className={viewer.url === pdf.url ? 'pdf-viewer' : `pdf-viewer pending ${viewer.ready ? 'ready' : ''}`}
+                aria-hidden={viewer.url !== pdf.url ? true : undefined} tabIndex={viewer.url === pdf.url ? 0 : -1}
+                onError={() => {
+                  if (pendingViewer.current?.url !== viewer.url) return;
+                  discardPendingViewer();
+                  notice(new Error('The new PDF preview could not load. The previous preview is still available; export the new PDF or compile again.'));
+                }}
+                onLoad={() => revealPreview(viewer.url)} src={`${viewer.url}#toolbar=0&navpanes=0`} />)}</div> :
               <div className="empty-preview"><div className="paper-illustration"><span /> <span /> <span /><b>∑</b><span /> <span /></div>
-                <h1>From a thought<br />to a paper.</h1><p>Your words, beautifully typeset.<br />Compile to see your document here.</p><button className="empty-compile" disabled={!current || compiling} onClick={compile}>Compile your document <span>↗</span></button><small>Runs privately in a browser worker.</small></div>}
+                <h1>From a thought<br />to a paper.</h1><p>Your words, beautifully typeset.<br />Your first preview is on its way.</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}>Compile your document <span>↗</span></button><small>Runs privately in a browser worker.</small></div>}
             </div>
             {log && <details className="compile-log" open={compileState.startsWith('LaTeX')}><summary>Compilation log</summary><pre>{log}</pre></details>}
-            <div className="preview-footer"><span>No server compilation. No background polling.</span><button className="quiet" onClick={() => setShowHelp(true)}>Supported LaTeX ↗</button></div>
+            <div className="preview-footer"><span>{engineState}</span><label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label><button className="quiet" onClick={() => setShowHelp(true)}>Supported LaTeX ↗</button></div>
           </section>
         </div>
       </main>
+    </div>
     </div>
     {auth && <AuthDialog mode={auth} setMode={setAuth} onClose={() => setAuth(null)} onSuccess={async signedIn => {
       setUser(signedIn); setAuth(null);
       try { await refreshCloud(); } catch (reason) { notice(reason); }
     }} />}
-    {showHelp && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setShowHelp(false); }}>
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="help-title"><button className="modal-close" autoFocus aria-label="Close help" onClick={() => setShowHelp(false)}>×</button>
+    {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
+  </div>;
+}
+
+function useDialogFocus(ref, onClose, initial = 'button') {
+  const previous = useRef(document.activeElement);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const dialog = ref.current;
+    dialog.querySelector(initial)?.focus();
+    const trap = event => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        close.current();
+      }
+      if (event.key !== 'Tab') return;
+      const controls = [...dialog.querySelectorAll('button:not(:disabled),input:not(:disabled),a[href]')].filter(control => control.getClientRects().length);
+      const first = controls[0], last = controls.at(-1);
+      if (!first) { event.preventDefault(); return; }
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    dialog.addEventListener('keydown', trap);
+    return () => {
+      dialog.removeEventListener('keydown', trap);
+      if (previous.current?.isConnected) previous.current.focus();
+    };
+  }, []);
+}
+
+function HelpDialog({ onClose }) {
+  const ref = useRef(null);
+  useDialogFocus(ref, onClose);
+  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <section ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="help-title"><button className="modal-close" aria-label="Close help" onClick={onClose}>×</button>
         <span className="eyebrow">A SMALLER, QUIETER WORKSPACE</span><h2 id="help-title">Just you and your ideas.</h2>
         <p>Each document is one UTF-8 .tex file, up to 100,000 characters. Images, binary files and external source assets are not supported.</p>
         <p>The bundled pdfTeX engine supports article, report, book, amsmath, amssymb, geometry and standard Computer Modern fonts. No shell escape, bibliography uploads, custom fonts, or automatic package downloads. Use pdfLaTeX-compatible text; full Unicode and every CTAN package are not supported.</p>
-        <p>Compile manually with <kbd>Ctrl</kbd> + <kbd>Enter</kbd>. Two passes resolve cross-references. Cancel stops the worker immediately; jobs time out after 60 seconds.</p>
-        <p>Drafts are saved on this browser/device after a short pause. Cloud saves are explicit (<kbd>Ctrl</kbd> + <kbd>S</kbd>), require sign-in, and never happen while typing. Export .tex for a portable backup. Device drafts are not encrypted; use your own device.</p>
+        <p>The engine starts loading when you open this page, and each opened document gets an initial preview. Enable Live preview for debounced updates after editing pauses; it starts off to avoid background CPU churn. Your choice is saved on this device. Compile manually with <kbd>Ctrl</kbd> + <kbd>Enter</kbd>. Two passes resolve cross-references. A new compile replaces the previous job; Cancel stops it immediately, and jobs time out after 60 seconds.</p>
+        <p>Drafts are saved on this browser/device after a short pause. <kbd>Ctrl</kbd> + <kbd>S</kbd> always recompiles and also saves to your account if signed in; cloud saves are explicit, require sign-in, and never happen while typing. Compilation timings measure typesetting, engine startup is shown separately, and cloud-save timings measure the full request round trip, not just database work. Export .tex for a portable backup. Device drafts are not encrypted; use your own device.</p>
         <p>The engine downloads only on first compile (~15 MB uncompressed), can use around 100 MB or more while active, and is released after each job. 120 fps is a design target, not a guarantee on every device.</p>
         <a href="/compiler/NOTICE.txt" target="_blank" rel="noreferrer">Compiler credits and source ↗</a>
       </section>
-    </div>}
-  </div>;
+    </div>;
 }
 
 function AuthDialog({ mode, setMode, onClose, onSuccess }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const ref = useRef(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    const trap = event => {
-      if (event.key !== 'Tab') return;
-      const controls = [...dialog.querySelectorAll('button:not(:disabled),input:not(:disabled),a')];
-      const first = controls[0], last = controls.at(-1);
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    dialog.addEventListener('keydown', trap);
-    return () => dialog.removeEventListener('keydown', trap);
-  }, []);
+  useDialogFocus(ref, () => { if (!busy) onClose(); }, 'input');
   return <div className="modal-backdrop"><section ref={ref} className="modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <button className="modal-close" disabled={busy} aria-label="Close sign in" onClick={onClose}>×</button>
     <span className="brand-mark">k</span><h2 id="auth-title">{mode === 'register' ? 'A home for your ideas.' : 'Welcome back.'}</h2><p>Save your documents across devices.<br />You can always keep writing without an account.</p>
@@ -405,8 +590,8 @@ function AuthDialog({ mode, setMode, onClose, onSuccess }) {
       finally { setBusy(false); }
     }}>
       <label>Username<input name="username" autoFocus required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]+" autoComplete="username" disabled={busy} /></label>
-      <label>Password<input name="password" type="password" required minLength={12} maxLength={128} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} disabled={busy} /></label>
-      <small>3-32 character username. Password: 12-128 characters.</small>
+      <label>Password<input name="password" type="password" required minLength={8} maxLength={128} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} disabled={busy} /></label>
+      <small>3-32 character username. Password: 8-128 characters.</small>
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="compile-button" disabled={busy}>{busy ? 'Please wait...' : mode === 'register' ? 'Create account' : 'Sign in'}</button>
     </form>

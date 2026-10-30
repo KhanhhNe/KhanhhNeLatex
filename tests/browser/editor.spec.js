@@ -30,6 +30,46 @@ async function observeStorage(page) {
   });
 }
 
+async function fakeEngine(page) {
+  await page.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    window.engineWorkers = [];
+    window.engineJobs = [];
+    window.engineDelay = 20;
+    window.maxConcurrentEngines = 0;
+    const observed = new WeakSet();
+    new MutationObserver(() => {
+      for (const frame of document.querySelectorAll('iframe')) {
+        if (observed.has(frame)) continue;
+        observed.add(frame);
+        if (!window.holdViewer) setTimeout(() => frame.dispatchEvent(new Event('load')), 0);
+      }
+    }).observe(document, { childList: true, subtree: true });
+    window.Worker = class {
+      constructor(url, options) {
+        if (!String(url).endsWith('/compiler/worker.js')) return new NativeWorker(url, options);
+        this.terminated = false;
+        this.passes = 0;
+        window.engineWorkers.push(this);
+        window.maxConcurrentEngines = Math.max(window.maxConcurrentEngines,
+          window.engineWorkers.filter(worker => !worker.terminated).length);
+        setTimeout(() => this.onmessage?.({ data: { result: 'ok' } }), 30);
+      }
+      postMessage(message) {
+        if (message.cmd === 'writefile') this.source = message.src;
+        if (message.cmd === 'compilelatex') {
+          if (!this.passes++) window.engineJobs.push({ source: this.source });
+          setTimeout(() => this.onmessage?.({ data: {
+            cmd: 'compile', result: window.engineFail ? 'error' : 'ok', log: this.source,
+            pdf: new TextEncoder().encode(`%PDF-1.4\n${this.source}\n%%EOF`),
+          } }), window.engineDelay);
+        }
+      }
+      terminate() { this.terminated = true; }
+    };
+  });
+}
+
 test('switching flushes keystrokes that arrive while a local save is completing', async ({ page }) => {
   await observeStorage(page);
   await page.goto('/');
@@ -39,6 +79,7 @@ test('switching flushes keystrokes that arrive while a local save is completing'
   await expect(saved(page)).toBeVisible();
   await page.getByRole('button', { name: 'New document' }).click();
   await expect(localDocuments(page)).toHaveCount(2);
+  await expect(titleEditor(page)).toHaveValue('Untitled paper');
   await expect(saved(page)).toBeVisible();
   await page.evaluate(() => { window.saveDelay = 500; });
   await sourceEditor(page).fill('before the switch');
@@ -53,6 +94,219 @@ test('switching flushes keystrokes that arrive while a local save is completing'
   await expect(saved(page)).toBeVisible();
   await page.reload();
   await expect(sourceEditor(page)).toHaveValue('last keystrokes during the save');
+});
+
+test('opening warms one engine and compiles immediately; live preview is debounced and persisted', async ({ page }) => {
+  await fakeEngine(page);
+  await page.goto('/');
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  await expect(page.locator('.preview-status')).toContainText(/\d+ ms/);
+  await expect(page.locator('.preview-footer')).toContainText('Engine initialized');
+  expect(await page.evaluate(() => window.engineWorkers.length)).toBe(1);
+  expect(await page.evaluate(() => window.engineJobs.length)).toBe(1);
+  const live = page.getByRole('checkbox', { name: 'Live preview' });
+  await expect(live).not.toBeChecked();
+  await sourceEditor(page).fill('live off edits');
+  await expect(saved(page)).toBeVisible();
+  expect(await page.evaluate(() => window.engineJobs.length)).toBe(1);
+  await live.check();
+  await sourceEditor(page).fill('first live edit');
+  await sourceEditor(page).fill('latest live edit');
+  await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(2);
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  expect(await page.evaluate(() => window.engineJobs.at(-1).source)).toBe('latest live edit');
+  await page.reload();
+  await expect(live).toBeChecked();
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  expect(await page.evaluate(() => window.engineJobs.length)).toBe(1);
+  await live.uncheck();
+  await sourceEditor(page).fill('no background compile');
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => window.engineJobs.length)).toBe(1);
+});
+
+test('Ctrl+S always recompiles unchanged source and reports cloud request round-trip timing', async ({ page }) => {
+  await fakeEngine(page);
+  let saves = 0;
+  let fail = false;
+  await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
+  await page.route('**/api/documents', async route => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: { documents: [] } });
+    saves++;
+    await new Promise(resolve => setTimeout(resolve, 60));
+    await route.fulfill({ json: { document: { id: 'saved-cloud', revision: saves } } });
+  });
+  await page.route('**/api/documents/saved-cloud', async route => {
+    if (fail) return route.fulfill({ status: 503, json: { error: 'Cloud save unavailable' } });
+    saves++;
+    await new Promise(resolve => setTimeout(resolve, 60));
+    await route.fulfill({ json: { revision: saves } });
+  });
+  await page.goto('/');
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  await expect(page.getByRole('checkbox', { name: 'Live preview' })).not.toBeChecked();
+  await sourceEditor(page).press('Control+s');
+  await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(2);
+  await expect(page.getByRole('status').filter({ hasText: 'Saved to your account' })).toContainText(/\d+ ms round trip/);
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  await sourceEditor(page).press('Control+s');
+  await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(3);
+  await expect(page.getByRole('button', { name: 'Save to account' })).toBeEnabled();
+  expect(saves).toBe(2);
+  expect(await page.evaluate(() => window.maxConcurrentEngines)).toBe(1);
+  fail = true;
+  await sourceEditor(page).press('Control+s');
+  await expect(page.getByRole('alert')).toContainText('Cloud save unavailable');
+  await expect(page.getByRole('status').filter({ hasText: 'Cloud save failed' })).not.toContainText('round trip');
+});
+
+test('later compile requests replace in-flight work and ignore its late completion', async ({ page }) => {
+  await fakeEngine(page);
+  await page.goto('/');
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  await page.getByRole('checkbox', { name: 'Live preview' }).check();
+  await page.evaluate(() => { window.engineDelay = 400; });
+  await sourceEditor(page).fill('older request');
+  await sourceEditor(page).press('Control+Enter');
+  await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(2);
+  await sourceEditor(page).fill('newest request');
+  await sourceEditor(page).press('Control+Enter');
+  await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(3);
+  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.engineWorkers[1].terminated)).toBe(true);
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  await expect(page.locator('.preview-status')).not.toContainText('out of date');
+  await page.locator('.compile-log summary').click();
+  await expect(page.locator('.compile-log')).toContainText('newest request');
+  expect(await page.evaluate(() => window.engineJobs.length)).toBe(3);
+  expect(await page.evaluate(() => window.maxConcurrentEngines)).toBe(1);
+});
+
+test('PDF handoff retains the old viewer until replacement loads, cancels stale viewers and skips unchanged bytes', async ({ page }) => {
+  await fakeEngine(page);
+  await page.addInitScript(() => {
+    window.revokedUrls = [];
+    const revoke = URL.revokeObjectURL;
+    URL.revokeObjectURL = url => { window.revokedUrls.push(url); revoke.call(URL, url); };
+  });
+  await page.goto('/');
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  const active = page.locator('iframe[title="Compiled PDF"]');
+  const original = await active.getAttribute('src');
+  const originalNode = await active.elementHandle();
+  await page.evaluate(() => { window.holdViewer = true; });
+  await sourceEditor(page).fill('first replacement');
+  await sourceEditor(page).press('Control+Enter');
+  const pending = page.locator('iframe[title="Loading compiled PDF"]');
+  await expect(pending).toHaveCount(1);
+  const discarded = await pending.getAttribute('src');
+  await expect(active).toHaveAttribute('src', original);
+  expect(await originalNode.evaluate(node => node.isConnected)).toBe(true);
+  expect(await page.evaluate(url => window.revokedUrls.includes(url.split('#')[0]), original)).toBe(false);
+  const exported = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export PDF' }).click();
+  expect(await readFile(await (await exported).path(), 'utf8')).toContain('first replacement');
+  await sourceEditor(page).fill('latest replacement');
+  await sourceEditor(page).press('Control+Enter');
+  await expect(pending).not.toHaveAttribute('src', discarded);
+  await expect(page.locator('iframe')).toHaveCount(2);
+  expect(await page.evaluate(url => window.revokedUrls.includes(url.split('#')[0]), discarded)).toBe(true);
+  await expect(active).toHaveAttribute('src', original);
+  const latest = await pending.getAttribute('src');
+  const stagedNode = await pending.elementHandle();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await pending.evaluate(frame => getComputedStyle(frame).transitionDuration)).toBe('0s');
+  await pending.dispatchEvent('load');
+  await expect(active).toHaveAttribute('src', latest);
+  await expect(pending).toHaveCount(0);
+  expect(await stagedNode.evaluate(node => node === document.querySelector('iframe[title="Compiled PDF"]'))).toBe(true);
+  expect(await page.evaluate(url => window.revokedUrls.includes(url.split('#')[0]), original)).toBe(true);
+  const count = await page.evaluate(() => window.engineJobs.length);
+  await sourceEditor(page).press('Control+Enter');
+  await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(count + 1);
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
+  await expect(page.locator('iframe')).toHaveCount(1);
+  expect(await stagedNode.evaluate(node => node.isConnected)).toBe(true);
+  await page.evaluate(() => { window.engineFail = true; });
+  await sourceEditor(page).fill('invalid source');
+  await sourceEditor(page).press('Control+Enter');
+  await expect(page.locator('.preview-status')).toContainText('LaTeX could not compile');
+  await expect(active).toHaveAttribute('src', latest);
+  await expect(page.locator('.preview-status')).toContainText('out of date');
+  expect(await page.evaluate(url => window.revokedUrls.includes(url.split('#')[0]), latest)).toBe(false);
+  await page.evaluate(() => { window.engineFail = false; window.engineDelay = 400; });
+  await sourceEditor(page).press('Control+Enter');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(active).toHaveAttribute('src', latest);
+  await page.getByRole('button', { name: 'New document' }).click();
+  await expect(active).toHaveCount(0);
+});
+
+test('mobile controls have readable text, 44px targets, labels and narrow/zoom reflow', async ({ page }) => {
+  await fakeEngine(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(sourceEditor(page)).toBeEnabled();
+  expect(await sourceEditor(page).evaluate(input => parseFloat(getComputedStyle(input).fontSize))).toBeGreaterThanOrEqual(16);
+  const checkTargets = async () => {
+    const undersized = await page.locator('button,a[href],input:not([type=file])').evaluateAll(controls => controls.filter(control => control.getClientRects().length).flatMap(control => {
+      const target = control.type === 'checkbox' ? control.closest('label') : control;
+      const box = target.getBoundingClientRect();
+      return box.width < 43.9 || box.height < 43.9 ? [{ name: control.getAttribute('aria-label') || control.textContent, width: box.width, height: box.height }] : [];
+    }));
+    expect(undersized).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(await page.evaluate(() => window.innerWidth));
+  };
+  await checkTargets();
+  await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Live preview' })).toBeVisible();
+  await checkTargets();
+  await page.getByRole('button', { name: 'Toggle documents' }).click();
+  await expect(page.getByRole('button', { name: 'Toggle documents' })).toHaveAttribute('aria-expanded', 'true');
+  await checkTargets();
+  await page.getByRole('button', { name: 'Toggle documents' }).click();
+  await page.setViewportSize({ width: 720, height: 600 });
+  await checkTargets();
+  await page.setViewportSize({ width: 320, height: 844 });
+  await checkTargets();
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
+  await page.evaluate(() => { document.documentElement.style.fontSize = '34px'; });
+  await checkTargets();
+  await expect(sourceEditor(page)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save to account' })).toBeVisible();
+});
+
+test('help and sign-in dialogs trap keyboard focus and restore it on Escape', async ({ page }) => {
+  await fakeEngine(page);
+  await page.goto('/');
+  const help = page.getByRole('button', { name: 'Help', exact: true });
+  await help.focus();
+  await help.press('Enter');
+  const dialog = page.getByRole('dialog');
+  const closeHelp = page.getByRole('button', { name: 'Close help' });
+  await expect(closeHelp).toBeFocused();
+  await closeHelp.press('Shift+Tab');
+  await expect(dialog.getByRole('link')).toBeFocused();
+  await dialog.getByRole('link').press('Tab');
+  await expect(closeHelp).toBeFocused();
+  await closeHelp.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(help).toBeFocused();
+  const signIn = page.getByRole('button', { name: /Sign in/ });
+  await signIn.focus();
+  await signIn.press('Enter');
+  await expect(page.getByRole('textbox', { name: 'Username' })).toBeFocused();
+  const password = page.getByLabel('Password', { exact: true });
+  await expect(password).toHaveAttribute('minlength', '8');
+  await expect(password).toHaveAttribute('maxlength', '128');
+  await expect(dialog).toContainText('Password: 8-128 characters.');
+  const closeSignIn = page.getByRole('button', { name: 'Close sign in' });
+  await closeSignIn.focus();
+  await closeSignIn.press('Shift+Tab');
+  await expect(page.getByRole('button', { name: 'New here? Create an account' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(signIn).toBeFocused();
 });
 
 test('reopening a linked cloud draft replaces visible inputs and persists the fetched text', async ({ page }) => {
