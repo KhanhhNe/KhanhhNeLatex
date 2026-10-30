@@ -420,6 +420,20 @@ test('mobile controls have readable text, 44px targets, labels and narrow/zoom r
   await page.getByRole('button', { name: 'Source', exact: true }).click();
   await page.evaluate(() => { document.documentElement.style.fontSize = '34px'; });
   await checkTargets();
+  const reflow = await page.evaluate(() => {
+    const state = document.querySelector('.save-state').getBoundingClientRect();
+    return {
+      stateWidth: state.width, stateHeight: state.height,
+      overflow: ['.topbar', '.top-actions', '.document-toolbar', '.document-actions', '.source-toolbar', '.mobile-tabs'].filter(selector => {
+        const el = document.querySelector(selector);
+        return el.scrollWidth > el.clientWidth + 1;
+      }),
+    };
+  });
+  expect(reflow.stateWidth).toBeGreaterThan(200);
+  expect(reflow.stateHeight).toBeLessThan(120);
+  expect(reflow.overflow).toEqual([]);
+  await sourceEditor(page).scrollIntoViewIfNeeded();
   await expect(sourceEditor(page)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save to account' })).toBeVisible();
 });
@@ -431,7 +445,15 @@ test('editor chrome, source and dialogs use one restrained visual system', async
   await editorReady(page);
   await expect(page.locator('.topbar')).toHaveCSS('background-color', 'rgb(22, 22, 22)');
   await expect(page.locator('.source-toolbar')).toHaveCSS('background-color', 'rgb(24, 32, 39)');
-  await expect(page.locator('.preview-toolbar')).toHaveCSS('background-color', 'rgb(248, 248, 248)');
+  await expect(page.locator('.preview-toolbar')).toHaveCSS('background-color', 'rgb(35, 42, 48)');
+  await expect(page.locator('.preview-panel')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
+  await expect(page.locator('.preview-status')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
+  await expect(page.locator('.compile-log')).toHaveCSS('background-color', 'rgb(35, 42, 48)');
+  await expect(page.locator('.preview-footer')).toHaveCSS('background-color', 'rgb(35, 42, 48)');
+  const pdf = page.locator('iframe[title="Compiled PDF"]');
+  await expect(pdf).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(pdf).toHaveCSS('color-scheme', 'light');
+  await expect(pdf).toHaveCSS('filter', 'none');
   await expect(page.locator('.source-file-tab')).toHaveText('main.tex');
   expect(await page.locator('.topbar').evaluate(el => el.getBoundingClientRect().height)).toBe(56);
   expect(await page.locator('.document-toolbar').evaluate(el => el.getBoundingClientRect().height)).toBe(64);
