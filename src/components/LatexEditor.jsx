@@ -79,7 +79,7 @@ export default function LatexEditor({
         model, theme: 'folio', ariaLabel: current.ariaLabel,
         readOnly: current.readOnly || current.loading,
         fontFamily: '"Cascadia Code", Consolas, "Liberation Mono", monospace',
-        fontSize: 16, lineHeight: 27, tabSize: 2, insertSpaces: true,
+        fontSize: 14, lineHeight: 24, tabSize: 2, insertSpaces: true,
         minimap: { enabled: false }, wordWrap: 'off',
         scrollBeyondLastLine: false, folding: false, glyphMargin: false,
         lineNumbersMinChars: 3, overviewRulerLanes: 0, hideCursorInOverviewRuler: true,
@@ -91,10 +91,10 @@ export default function LatexEditor({
         matchBrackets: 'near', renderValidationDecorations: 'off',
         unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
         accessibilitySupport: 'on', editContext: false,
-        tabIndex: 0, padding: { top: 16, bottom: 20 },
+        tabIndex: 0, padding: { top: 12, bottom: 16 },
         automaticLayout: false, contextmenu: false,
         stopRenderingLineAfter: 2000, largeFileOptimizations: true,
-        scrollbar: { alwaysConsumeMouseWheel: false },
+        scrollbar: { alwaysConsumeMouseWheel: false, verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
       });
       editor.current = instance;
       guard = event => {
@@ -127,7 +127,12 @@ export default function LatexEditor({
         latest.current.onChange(next);
       });
       resize = new ResizeObserver(() => {
-        if (host.current?.clientWidth && host.current?.clientHeight) instance.layout();
+        if (host.current?.clientWidth && host.current?.clientHeight) {
+          const fontSize = (innerWidth <= 1050 ? 16 : 14) * parseFloat(getComputedStyle(document.documentElement).fontSize) / 16;
+          if (instance.getOption(monaco.editor.EditorOption.fontSize) !== fontSize)
+            instance.updateOptions({ fontSize, lineHeight: Math.round(fontSize * 1.7) });
+          instance.layout();
+        }
       });
       resize.observe(host.current);
       instance.layout();

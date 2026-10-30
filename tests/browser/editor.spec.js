@@ -424,6 +424,26 @@ test('mobile controls have readable text, 44px targets, labels and narrow/zoom r
   await expect(page.getByRole('button', { name: 'Save to account' })).toBeVisible();
 });
 
+test('editor chrome, source and dialogs use one restrained visual system', async ({ page }) => {
+  await fakeEngine(page);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto('/#workspace');
+  await editorReady(page);
+  await expect(page.locator('.topbar')).toHaveCSS('background-color', 'rgb(22, 22, 22)');
+  await expect(page.locator('.source-toolbar')).toHaveCSS('background-color', 'rgb(24, 32, 39)');
+  await expect(page.locator('.preview-toolbar')).toHaveCSS('background-color', 'rgb(248, 248, 248)');
+  await expect(page.locator('.source-file-tab')).toHaveText('main.tex');
+  expect(await page.locator('.topbar').evaluate(el => el.getBoundingClientRect().height)).toBe(56);
+  expect(await page.locator('.document-toolbar').evaluate(el => el.getBoundingClientRect().height)).toBe(64);
+  expect(await page.locator('.preview-toolbar').evaluate(el => el.getBoundingClientRect().height)).toBe(56);
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
+  await page.getByRole('button', { name: 'Close help' }).press('Escape');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
+  await expect(page.getByRole('textbox', { name: 'Username' })).toHaveCSS('background-color', 'rgb(41, 41, 41)');
+});
+
 test('help and sign-in dialogs trap keyboard focus and restore it on Escape', async ({ page }) => {
   await fakeEngine(page);
   await page.goto('/#workspace');
@@ -455,6 +475,23 @@ test('help and sign-in dialogs trap keyboard focus and restore it on Escape', as
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(signIn).toBeFocused();
+});
+
+test('long account names retain an explicit mobile sign-out action without overflowing', async ({ page }) => {
+  await fakeEngine(page);
+  const username = 'a'.repeat(32);
+  await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username } } }));
+  await page.route('**/api/documents', route => route.fulfill({ json: { documents: [] } }));
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto('/#workspace');
+  await expect(page.getByRole('button', { name: `Sign out ${username}` })).toBeVisible();
+  await expect(page.locator('.account-name')).toBeHidden();
+  await expect(page.getByRole('button', { name: `Sign out ${username}` }).locator('span:last-child')).toHaveText('Sign out');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  await page.getByRole('button', { name: 'Close help' }).press('Escape');
 });
 
 test('reopening a linked cloud draft replaces visible inputs and persists the fetched text', async ({ page }) => {
