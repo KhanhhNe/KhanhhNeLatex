@@ -67,25 +67,36 @@ function App() {
   const timer = useRef(null);
   const pending = useRef(false);
   const saving = useRef(Promise.resolve());
+  const persisted = useRef(new WeakSet());
+  const switching = useRef(false);
   const generation = useRef(0);
   const compiler = useRef(new LatexCompiler());
   const pdfRef = useRef(null);
 
   function notice(reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
   async function persist(document = active.current) {
-    clearTimeout(timer.current);
     if (!document) return;
-    pending.current = true;
+    if (document === active.current) clearTimeout(timer.current);
+    if (persisted.current.has(document)) return;
+    if (document === active.current) pending.current = true;
     const work = saving.current.catch(() => {}).then(() => drafts.put(document));
     saving.current = work;
     try {
       await work;
+      persisted.current.add(document);
       if (active.current === document) {
         pending.current = false;
         setSaveState(document.dirty ? 'Saved on this device' : 'Saved to your account');
       }
       setDocuments(list => [document, ...list.filter(item => item.id !== document.id)]);
     } catch (reason) { notice(reason); setSaveState('Local save failed - export your source'); throw reason; }
+  }
+  async function flush() {
+    let snapshot;
+    do {
+      snapshot = active.current;
+      await persist(snapshot);
+    } while (active.current !== snapshot);
   }
   function update(patch) {
     const next = { ...active.current, ...patch, dirty: true, updated_at: Date.now() };
@@ -97,9 +108,11 @@ function App() {
     timer.current = setTimeout(() => { persist(next).catch(() => {}); }, 300);
   }
   async function select(document, force = false) {
+    if (switching.current) return;
     if (!force && document.id === active.current?.id) { setSidebar(false); return; }
+    switching.current = true;
     try {
-      await persist();
+      await flush();
       compiler.current.cancel();
       generation.current++;
       active.current = document;
@@ -113,11 +126,13 @@ function App() {
       setPdf(null);
       setSidebar(false);
       setSaveState(document.dirty ? 'Saved on this device' : 'Saved to your account');
-    } catch { /* The visible save error keeps the current draft open. */ }
+      await persist(document);
+    } catch { /* The visible save error keeps the unsaved draft open. */ }
+    finally { switching.current = false; }
   }
   async function newDocument(source, title) {
     const document = makeDraft(source, title);
-    try { await persist(); await drafts.put(document); await select(document); }
+    try { await select(document); }
     catch (reason) { notice(reason); }
   }
   async function refreshCloud() {
@@ -130,6 +145,7 @@ function App() {
       const document = list.sort((a, b) => b.updated_at - a.updated_at)[0] || makeDraft();
       if (!list.length) await drafts.put(document);
       if (disposed) return;
+      for (const draft of list.length ? list : [document]) persisted.current.add(draft);
       active.current = document;
       setCurrent(document);
       setDocuments(list.length ? list : [document]);
@@ -180,6 +196,7 @@ function App() {
     } finally { setCompiling(false); }
   }
   async function sync() {
+    if (!active.current) return;
     if (!user) { setAuth('login'); return; }
     if (busy) return;
     setBusy(true); setError('');
@@ -207,12 +224,11 @@ function App() {
   }
   async function openCloud(item) {
     try {
-      const local = documents.find(doc => doc.cloudId === item.id && doc.owner === user.id);
-      if (local?.dirty && !window.confirm('Replace this device draft with the cloud version? Export the local draft first if you need it.')) return;
       const { document } = await api(`/documents/${item.id}`);
+      const local = active.current?.cloudId === item.id && active.current.owner === user.id
+        ? active.current : documents.find(doc => doc.cloudId === item.id && doc.owner === user.id);
+      if (local?.dirty && !window.confirm('Replace this device draft with the cloud version? Export the local draft first if you need it.')) return;
       const next = { ...document, id: local?.id || crypto.randomUUID(), cloudId: document.id, owner: user.id, dirty: false };
-      await persist();
-      await drafts.put(next);
       await select(next, true);
     } catch (reason) { notice(reason); }
   }
@@ -294,7 +310,7 @@ function App() {
       <main className="main">
         <div className="document-toolbar">
           <div className="document-title"><span className="breadcrumb">Workspace /</span>
-            <input key={current?.id || 'empty'} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy}
+            <input key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy}
               onChange={event => update({ title: event.target.value })} onBlur={event => {
                 if (!active.current?.title.trim()) { event.target.value = 'Untitled paper'; update({ title: 'Untitled paper' }); }
                 persist().catch(() => {});
@@ -311,13 +327,14 @@ function App() {
           <section className={`editor-panel ${tab === 'source' ? 'mobile-active' : ''}`} aria-label="LaTeX source editor">
             <div className="panel-toolbar"><span><span className="code-symbol">⌘</span> main.tex</span><span className="tiny">LATEX</span></div>
             <div className="editor-container">
-              <textarea ref={editor} key={current?.id || 'loading'} defaultValue={current?.source || ''} disabled={!current}
+              <textarea ref={editor} key={`${current?.id || 'loading'}:${generation.current}`} defaultValue={current?.source || ''} disabled={!current}
                 aria-label="LaTeX source" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={100000}
                 onChange={event => update({ source: event.target.value })}
                 onKeyDown={event => {
-                  if (event.key === 'Tab') {
+                  if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
                     event.preventDefault();
                     const input = event.currentTarget;
+                    if (input.value.length - (input.selectionEnd - input.selectionStart) + 2 > input.maxLength) return;
                     input.setRangeText('  ', input.selectionStart, input.selectionEnd, 'end');
                     update({ source: input.value });
                   }
