@@ -18,6 +18,11 @@ test('Monaco preserves controlled editing, selection, undo, full clipboard and o
   const tokenColors = await page.locator('.view-lines span').evaluateAll(spans =>
     [...new Set(spans.filter(span => span.textContent.trim()).map(span => getComputedStyle(span).color))]);
   expect(tokenColors.length).toBeGreaterThanOrEqual(3);
+  expect(tokenColors).toEqual(expect.arrayContaining([
+    'rgb(160, 212, 206)', 'rgb(228, 209, 139)', 'rgb(199, 169, 232)', 'rgb(149, 162, 171)',
+  ]));
+  await expect(page.locator('.monaco-editor')).toHaveCSS('background-color', 'rgb(24, 32, 39)');
+  await expect(page.locator('.monaco-editor')).toHaveCount(1);
   await sourceEditor(page).press('Control+End');
   await page.keyboard.insertText(' Added');
   await page.getByRole('textbox', { name: 'Document title' }).fill('Rerender without replacing the editor');

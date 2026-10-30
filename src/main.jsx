@@ -4,6 +4,7 @@ import { LatexCompiler } from './compiler.js';
 import { api, drafts, download, readTex } from './storage.js';
 import LatexEditor from './components/LatexEditor.jsx';
 import ProjectsView from './components/ProjectsView.jsx';
+import Icon from './components/Icon.jsx';
 import './style.css';
 
 const starter = String.raw`\documentclass[11pt]{article}
@@ -501,39 +502,38 @@ function App() {
       onImport={() => fileInput.current.click()} username={user?.username}
       onSignIn={() => user ? showWorkspace() : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className="workspace-view">
     <header className="topbar">
-      <button className="icon projects-back" aria-label="Your projects" onClick={showProjects}>▤</button>
-      <button className="icon mobile-menu" aria-label="Toggle documents" aria-expanded={sidebar} aria-controls="document-sidebar" onClick={() => setSidebar(!sidebar)}>☰</button>
-      <a className="brand" href="/" aria-label="KhanhhNeLatex home"><span className="brand-mark">k</span><span className="brand-name">KhanhhNeLatex</span><span className="brand-label">A LATEX WORKSPACE</span></a>
-      <div className="top-actions"><span className="local-badge"><i /> Local-first</span>
-        <button className="quiet" onClick={() => setShowHelp(true)}>Help</button>
-        {user ? <button className="account" disabled={busy} onClick={async () => {
+      <button className="icon projects-back" aria-label="Your projects" title="Your projects" onClick={showProjects}><Icon name="back" /></button>
+      <button className="icon mobile-menu" aria-label="Toggle documents" title="Toggle documents" aria-expanded={sidebar} aria-controls="document-sidebar" onClick={() => setSidebar(!sidebar)}><Icon name="panel" /></button>
+      <a className="brand" href="/" aria-label="KhanhhNeLatex home"><span className="brand-mark">k</span><span className="brand-name">KhanhhNeLatex</span></a>
+      <div className="top-actions">
+        <button className="quiet" onClick={() => setShowHelp(true)}><Icon name="help" /><span>Help</span></button>
+        {user ? <button className="account" aria-label={`Sign out ${user.username}`} title={`Sign out ${user.username}`} disabled={busy} onClick={async () => {
           try { await persist(); await api('/logout', {}); setUser(null); setCloud([]); }
           catch (reason) { notice(reason); }
-        }}>{user.username} <span> / Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}>Sign in <span>↗</span></button>}
+        }}><Icon name="user" /><span className="account-name">{user.username}</span><span>Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}><Icon name="user" />Sign in</button>}
       </div>
     </header>
     <div className="workspace">
       <aside id="document-sidebar" className={`sidebar ${sidebar ? 'open' : ''}`}>
-        <div className="sidebar-heading"><span>YOUR WORKSPACE</span><span className="tiny">TEXT ONLY</span></div>
-        <button className="new-document" onClick={() => newDocument()} disabled={busy}>＋ <span>New document</span><kbd>N</kbd></button>
+        <div className="sidebar-heading"><span>Documents</span><Icon name="panel" /></div>
+        <button className="new-document" onClick={() => newDocument()} disabled={busy}><Icon name="plus" /><span>New document</span></button>
         <div className="section-label">On this device <span>{documents.length}</span></div>
         <nav aria-label="Local documents">{documents.map(doc =>
           <button key={doc.id} className={`document-item ${current?.id === doc.id ? 'selected' : ''}`} onClick={() => select(doc)} disabled={busy}>
-            <span className="file-icon" aria-hidden="true">T<span>E</span>X</span><span className="document-name">{doc.title}<small>{doc.cloudId ? 'Linked to account' : 'Local draft'}</small></span>
+            <Icon name="file" className="file-icon" /><span className="document-name">{doc.title}<small>{doc.cloudId ? 'Linked to account' : 'Local draft'}</small></span>
           </button>)}</nav>
         {user && <><div className="section-label">Your cloud documents <span>{cloud.length}</span></div><nav aria-label="Cloud documents">
-          {cloud.map(item => <button key={item.id} className="document-item" disabled={busy} onClick={() => openCloud(item)}><span className="file-icon">☁</span><span className="document-name">{item.title}<small>Open saved version</small></span></button>)}
+          {cloud.map(item => <button key={item.id} className="document-item" disabled={busy} onClick={() => openCloud(item)}><Icon name="file" className="file-icon" /><span className="document-name">{item.title}<small>Open saved version</small></span></button>)}
           {!cloud.length && <p className="sidebar-note">Save a document to keep it in your account.</p>}
         </nav></>}
         <div className="sidebar-bottom">
-          <button className="import-button" onClick={() => fileInput.current.click()} disabled={busy}>↥ <span>Import .tex file</span></button>
-          <div className="privacy-card"><span>Made for a little focus.</span><p>Write locally. Compile privately.<br />No uploads required.</p></div>
+          <button className="import-button" onClick={() => fileInput.current.click()} disabled={busy}><Icon name="upload" /><span>Import .tex file</span></button>
           <button className="delete-button" onClick={remove} disabled={!current || busy}>Delete current document</button>
         </div>
       </aside>
       <main className="main">
         <div className="document-toolbar">
-          <div className="document-title"><span className="breadcrumb">Workspace /</span>
+          <div className="document-title"><span className="breadcrumb">Projects <span aria-hidden="true">/</span></span>
             <input key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy}
               onChange={event => update({ title: event.target.value })} onBlur={event => {
                 if (!active.current?.title.trim()) { event.target.value = 'Untitled paper'; update({ title: 'Untitled paper' }); }
@@ -542,14 +542,14 @@ function App() {
             <span className="save-state" role="status" aria-atomic="true"><i />{saveState}</span>
           </div>
           <div className="document-actions">
-            <button className="quiet" disabled={!current} onClick={() => download(active.current.source, `${active.current.title || 'document'}.tex`, 'text/plain;charset=utf-8')}>Export .tex</button>
+            <button className="quiet" disabled={!current} onClick={() => download(active.current.source, `${active.current.title || 'document'}.tex`, 'text/plain;charset=utf-8')}><Icon name="download" />Export .tex</button>
             <button className="save-button" disabled={!current || busy} onClick={sync}>{busy ? 'Saving...' : 'Save to account'}</button>
           </div>
         </div>
         <div className="mobile-tabs"><button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => setTab('source')}>Source</button><button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>PDF preview</button></div>
         <div className="panels">
           <section id="source-panel" className={`editor-panel ${tab === 'source' ? 'mobile-active' : ''}`} aria-label="LaTeX source editor">
-            <div className="panel-toolbar"><span><span className="code-symbol">⌘</span> main.tex</span><span className="tiny">LATEX</span>
+            <div className="panel-toolbar source-toolbar"><span className="source-file-tab"><Icon name="file" />main.tex</span><span className="tiny">LaTeX</span>
               <button className="compile-button source-compile" aria-label={compiling ? 'Cancel' : 'Compile'} disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>{compiling ? 'Cancel' : 'Compile'}</button>
             </div>
             <div className="editor-container">
@@ -558,17 +558,17 @@ function App() {
                 onChange={source => update({ source })}
                 onSave={() => compile()} onCompile={() => compile()} />
             </div>
-            <div className="editor-footer"><span>UTF-8 / Text only</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>
+            <div className="editor-footer"><span>LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>
           </section>
           <section id="preview-panel" className={`preview-panel ${tab === 'preview' ? 'mobile-active' : ''}`} aria-label="PDF preview">
-            <div className="panel-toolbar preview-toolbar"><span>Preview <span className="preview-tag">PDF</span></span><div className="preview-actions">
+            <div className="panel-toolbar preview-toolbar"><div className="preview-actions">
+              <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>
+                {compiling ? <span className="spinner" /> : <Icon name="refresh" />}{compiling ? 'Cancel' : 'Compile'}
+              </button><span className="preview-title">PDF preview</span>
               <button className="quiet" disabled={!pdf} onClick={() => {
                 const latest = generatedPdf.current;
                 download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
-              }}>Export PDF ↓</button>
-              <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>
-                <span className={compiling ? 'spinner' : ''}>{compiling ? '' : '▷'}</span>{compiling ? 'Cancel' : 'Compile'}
-              </button></div>
+              }}><Icon name="download" /><span>Export PDF</span></button></div>
             </div>
             <div className="preview-status">
               <span className="preview-status-reserve" aria-hidden="true" />
@@ -584,11 +584,11 @@ function App() {
                   notice(new Error('The new PDF preview could not load. The previous preview is still available; export the new PDF or compile again.'));
                 }}
                 onLoad={() => revealPreview(viewer.url)} src={`${viewer.url}#toolbar=0&navpanes=0`} />)}</div> :
-              <div className="empty-preview"><div className="paper-illustration"><span /> <span /> <span /><b>∑</b><span /> <span /></div>
-                <h1>From a thought<br />to a paper.</h1><p>Your words, beautifully typeset.<br />Your first preview is on its way.</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}>Compile your document <span>↗</span></button><small>Runs privately in a browser worker.</small></div>}
+              <div className="empty-preview"><Icon name="file" />
+                <h1>{compiling ? 'Preparing preview' : 'PDF preview'}</h1><p>{compiling ? 'Typesetting your document…' : 'Compile to see your document here.'}</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}><Icon name="refresh" />Compile your document</button></div>}
             </div>
             <div className="compile-log-slot"><details className="compile-log" open={compileState.includes('See compilation log.')}><summary>Compilation log</summary><pre>{log || 'No compilation log available.'}</pre></details></div>
-            <div className="preview-footer"><span>{engineState}</span><label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label><button className="quiet" onClick={() => setShowHelp(true)}>Supported LaTeX ↗</button></div>
+            <div className="preview-footer"><span title={engineState}>{engineState}</span><label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label><button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>
           </section>
         </div>
       </main>
@@ -634,13 +634,13 @@ function HelpDialog({ onClose }) {
   const ref = useRef(null);
   useDialogFocus(ref, onClose);
   return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-      <section ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="help-title"><button className="modal-close" aria-label="Close help" onClick={onClose}>×</button>
-        <span className="eyebrow">A SMALLER, QUIETER WORKSPACE</span><h2 id="help-title">Just you and your ideas.</h2>
+      <section ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="help-title"><button className="modal-close" aria-label="Close help" onClick={onClose}><Icon name="close" /></button>
+        <h2 id="help-title">Workspace help</h2>
         <p>Each document is one UTF-8 .tex file, up to 100,000 characters. Images, binary files and external source assets are not supported.</p>
         <p>The bundled pdfTeX engine supports article, report, book, amsmath, amssymb, geometry and standard Computer Modern fonts. No shell escape, bibliography uploads, custom fonts, or automatic package downloads. Use pdfLaTeX-compatible text; full Unicode and every CTAN package are not supported.</p>
-        <p>The engine starts loading when you open this page, and each opened document gets an initial preview. Enable Live preview for debounced updates after editing pauses; it starts off to avoid background CPU churn. Your choice is saved on this device. Compile manually with <kbd>Ctrl</kbd> + <kbd>Enter</kbd>. Two passes resolve cross-references. A new compile replaces the previous job; Cancel stops it immediately, and jobs time out after 60 seconds.</p>
+        <p>The engine starts loading when you enter the workspace, and each opened document gets an initial preview. Enable Live preview for debounced updates after editing pauses; it starts off to avoid background CPU churn. Your choice is saved on this device. Compile manually with <kbd>Ctrl</kbd> + <kbd>Enter</kbd>. Two passes resolve cross-references. A new compile replaces the previous job; Cancel stops it immediately, and jobs time out after 60 seconds.</p>
         <p>Drafts save automatically on this device after a short pause. Use Save to account once to link a draft; subsequent edits save automatically after an 800 ms pause while signed in as its owner. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>S</kbd> only forces a fresh compilation, even when source is unchanged. Cloud failures keep your device draft. Compilation timings measure typesetting, engine startup is shown separately, and cloud-save timings measure the full request round trip, not just database work. Export .tex for a portable backup. Device drafts are not encrypted; use your own device.</p>
-        <p>The engine downloads only on first compile (~15 MB uncompressed), can use around 100 MB or more while active, and is released after each job. 120 fps is a design target, not a guarantee on every device.</p>
+        <p>First compilation fetches the pinned local engine and required bundled packages. Browser caching can avoid repeat transfers. Active compilation can use more than 100 MB; the compiler worker is released after each job. Manual compilation keeps background CPU use low.</p>
         <a href="/compiler/NOTICE.txt" target="_blank" rel="noreferrer">Compiler credits and source ↗</a>
       </section>
     </div>;
@@ -652,8 +652,8 @@ function AuthDialog({ mode, setMode, onClose, onSuccess }) {
   const ref = useRef(null);
   useDialogFocus(ref, () => { if (!busy) onClose(); }, 'input');
   return <div className="modal-backdrop"><section ref={ref} className="modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
-    <button className="modal-close" disabled={busy} aria-label="Close sign in" onClick={onClose}>×</button>
-    <span className="brand-mark">k</span><h2 id="auth-title">{mode === 'register' ? 'A home for your ideas.' : 'Welcome back.'}</h2><p>Save your documents across devices.<br />You can always keep writing without an account.</p>
+    <button className="modal-close" disabled={busy} aria-label="Close sign in" onClick={onClose}><Icon name="close" /></button>
+    <span className="brand-mark">k</span><h2 id="auth-title">{mode === 'register' ? 'Create an account' : 'Sign in'}</h2><p>Sync your documents across devices. Local editing does not require an account.</p>
     <form onSubmit={async event => {
       event.preventDefault(); setBusy(true); setError('');
       const data = new FormData(event.currentTarget);
