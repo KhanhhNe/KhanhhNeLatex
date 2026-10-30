@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "khanhhne-latex",
+  "main": "server/worker.js",
+  "compatibility_date": "2026-10-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "khanhhne-latex",
+    "database_id": "cd41987e-fef8-4d16-990c-fb4c0813786e",
+    "migrations_dir": "migrations"
+  }],
+  "vars": { "APP_ORIGIN": "local-auto" }
+}

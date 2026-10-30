@@ -1,0 +1,44 @@
+{
+  "name": "khanhhne-latex",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "files": [
+    "src", "server", "scripts", "migrations", "tests", ".github", "AGENTS.md",
+    "public/compiler", "public/_headers",
+    "index.html", "vite.config.js", "playwright.config.js",
+    "cloudflare.config.ts", "wrangler.config.ts", "wrangler.jsonc",
+    "drizzle.config.js", ".env.example", ".gitignore",
+    "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "package-lock.json", ".gitattributes"
+  ],
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run source:bundle && node scripts/asset-hashes.mjs && vite build",
+    "preview": "wrangler dev --ip 127.0.0.1 --port 8787",
+    "dev:worktree": "node scripts/dev-worktree.mjs",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "db:worktree": "wrangler d1 migrations apply DB --local --persist-to .wrangler/worktree-state",
+    "db:generate": "drizzle-kit generate",
+    "db:check": "node scripts/check-migrations.mjs",
+    "source:bundle": "node scripts/package-source.mjs",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "playwright test",
+    "build:cloudflare": "npm run build && wrangler build --experimental-new-config --experimental-cf-build-output",
+    "build:check": "npm run build:cloudflare && npx wrangler deploy --dry-run --config wrangler.jsonc"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.0",
+    "express": "^5.1.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "cf": "1.0.0-beta.20",
+    "drizzle-kit": "^0.31.0",
+    "@playwright/test": "^1.56.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "vite": "^7.1.12",
+    "wrangler": "^4.45.0"
+  }
+}

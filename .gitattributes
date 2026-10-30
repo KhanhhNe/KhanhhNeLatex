@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.wasm binary
+*.pfb binary
+*.tfm binary
+*.fmt binary
+*.tar.gz binary
+*.zip binary
+*.png binary
+*.jpg binary

@@ -1,0 +1,42 @@
+KhanhhNeLatex compiler and source notices
+=======================================
+
+This application is original software inspired by document-editing workflows.
+It is not affiliated with OpenAI or Prism, and contains no Prism source/assets.
+
+Application source (GNU AGPL v3 only): /source.tar.gz
+Full license text: /compiler/AGPL-3.0.txt
+
+SwiftLaTeX / SwiftLab, Copyright 2018-2022, GNU AGPL v3.
+Unmodified pdfTeX WebAssembly and JS assets from release v20022022:
+https://github.com/SwiftLaTeX/SwiftLaTeX/releases/tag/v20022022
+Corresponding full engine source and build scripts:
+/compiler/swiftlatex-source.tar.gz
+https://github.com/SwiftLaTeX/SwiftLaTeX/tree/v20022022
+
+The worker.js adapter and manifest.js are original application code.
+The source archive includes all application source and build instructions.
+
+LaTeX format file from SwiftLaTeX/Texlive-Ondemand:
+https://github.com/SwiftLaTeX/Texlive-Ondemand/tree/cc2146e220658f5ee0f8643355252ae0995fbc98
+
+Bundled TeX Live package files retain their original individual licenses.
+Source, documentation and licenses are available from the upstream projects:
+LaTeX base, tools/keyval (LPPL 1.3c+): https://ctan.org/pkg/latex-base
+https://ctan.org/pkg/latex-tools
+LaTeX backend (LPPL 1.3c+): https://ctan.org/pkg/l3backend
+AMS math (LPPL 1.3c+): https://ctan.org/pkg/amsmath
+AMS fonts and symbols (SIL OFL): https://ctan.org/pkg/amsfonts
+geometry (LPPL 1.3c+): https://ctan.org/pkg/geometry
+iftex and ifvtex (LPPL 1.3c+): https://ctan.org/pkg/iftex
+https://ctan.org/pkg/ifvtex
+Computer Modern (Knuth license): https://ctan.org/pkg/cm
+Computer Modern Type 1 fonts (SIL OFL): https://ctan.org/pkg/amsfonts
+CM-Super fonts and encoding (GPL v2+ with font exception):
+https://ctan.org/pkg/cm-super
+
+Package acquisition mirror: https://texlive.texlyre.org/
+The deployment makes NO requests to that mirror or any external package server.
+The font map was reduced to entries for the bundled fonts; font files, package
+files and format are unmodified. Asset hashes are in assets.sha256.json.
+Only the subset documented in the Help dialog and README is supported.

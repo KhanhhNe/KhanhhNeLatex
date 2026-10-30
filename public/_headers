@@ -1,0 +1,11 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self'; connect-src 'self'; frame-src blob:; object-src blob:; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+/compiler/*
+  Cache-Control: public, max-age=3600
+/source.tar.gz
+  Content-Type: application/gzip
+  Content-Disposition: attachment; filename="khanhhne-latex-source.tar.gz"

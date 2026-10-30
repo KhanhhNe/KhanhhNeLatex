@@ -1,0 +1,28 @@
+% Subset for bundled fonts only. Original: TeX Live pdftex.map.
+ecrm1095 SFRM1095 " T1Encoding ReEncodeFont " <cm-super-t1.enc <sfrm1095.pfb
+larm1095 SFRM1095 " T2AEncoding ReEncodeFont " <cm-super-t2a.enc <sfrm1095.pfb
+lbrm1095 SFRM1095 " T2BEncoding ReEncodeFont " <cm-super-t2b.enc <sfrm1095.pfb
+lcrm1095 SFRM1095 " T2CEncoding ReEncodeFont " <cm-super-t2c.enc <sfrm1095.pfb
+tcrm1095 SFRM1095 " TS1Encoding ReEncodeFont " <cm-super-ts1.enc <sfrm1095.pfb
+rxrm1095 SFRM1095 " X2Encoding ReEncodeFont " <cm-super-x2.enc <sfrm1095.pfb
+ecrm1000 SFRM1000 " T1Encoding ReEncodeFont " <cm-super-t1.enc <sfrm1000.pfb
+larm1000 SFRM1000 " T2AEncoding ReEncodeFont " <cm-super-t2a.enc <sfrm1000.pfb
+lbrm1000 SFRM1000 " T2BEncoding ReEncodeFont " <cm-super-t2b.enc <sfrm1000.pfb
+lcrm1000 SFRM1000 " T2CEncoding ReEncodeFont " <cm-super-t2c.enc <sfrm1000.pfb
+tcrm1000 SFRM1000 " TS1Encoding ReEncodeFont " <cm-super-ts1.enc <sfrm1000.pfb
+rxrm1000 SFRM1000 " X2Encoding ReEncodeFont " <cm-super-x2.enc <sfrm1000.pfb
+cmbx10 CMBX10 <cmbx10.pfb
+cmbx12 CMBX12 <cmbx12.pfb
+cmex10 CMEX10 <cmex10.pfb
+cmmi10 CMMI10 <cmmi10.pfb
+cmmi7 CMMI7 <cmmi7.pfb
+cmmi8 CMMI8 <cmmi8.pfb
+cmr10 CMR10 <cmr10.pfb
+cmr12 CMR12 <cmr12.pfb
+cmr17 CMR17 <cmr17.pfb
+cmr6 CMR6 <cmr6.pfb
+cmr7 CMR7 <cmr7.pfb
+cmsy10 CMSY10 <cmsy10.pfb
+cmsy8 CMSY8 <cmsy8.pfb
+cmti10 CMTI10 <cmti10.pfb
+cmtt10 CMTT10 <cmtt10.pfb
