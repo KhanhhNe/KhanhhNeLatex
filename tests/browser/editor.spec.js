@@ -247,6 +247,7 @@ test('mobile controls have readable text, 44px targets, labels and narrow/zoom r
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await expect(sourceEditor(page)).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeVisible();
   expect(await sourceEditor(page).evaluate(input => parseFloat(getComputedStyle(input).fontSize))).toBeGreaterThanOrEqual(16);
   const checkTargets = async () => {
     const undersized = await page.locator('button,a[href],input:not([type=file])').evaluateAll(controls => controls.filter(control => control.getClientRects().length).flatMap(control => {

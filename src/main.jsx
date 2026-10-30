@@ -475,7 +475,9 @@ function App() {
         <div className="mobile-tabs"><button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => setTab('source')}>Source</button><button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>PDF preview</button></div>
         <div className="panels">
           <section id="source-panel" className={`editor-panel ${tab === 'source' ? 'mobile-active' : ''}`} aria-label="LaTeX source editor">
-            <div className="panel-toolbar"><span><span className="code-symbol">⌘</span> main.tex</span><span className="tiny">LATEX</span></div>
+            <div className="panel-toolbar"><span><span className="code-symbol">⌘</span> main.tex</span><span className="tiny">LATEX</span>
+              <button className="compile-button source-compile" aria-label={compiling ? 'Cancel' : 'Compile'} disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>{compiling ? 'Cancel' : 'Compile'}</button>
+            </div>
             <div className="editor-container">
               <textarea ref={editor} key={`${current?.id || 'loading'}:${generation.current}`} defaultValue={current?.source || ''} disabled={!current}
                 aria-label="LaTeX source" aria-describedby="source-shortcuts" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={100000}

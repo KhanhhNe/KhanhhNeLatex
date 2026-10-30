@@ -73,6 +73,7 @@ kbd{font-size:.76rem;color:#555b68}
 .preview-footer .quiet{font-size:.82rem}
 .live-preview{display:flex;align-items:center;gap:8px;cursor:pointer;color:#4f5362;min-height:44px;font-size:.88rem;max-width:100%}
 .live-preview input{margin:0;width:20px;height:20px;accent-color:#68517f;cursor:pointer}
+.source-compile{display:none}
 .compile-log{max-height:35%;font-size:.88rem;color:#4f5362}
 .compile-log summary{min-height:44px;padding:10px 0}
 .compile-log pre{font-size:.82rem;color:#303747}
@@ -107,6 +108,7 @@ kbd{font-size:.76rem;color:#555b68}
   .mobile-tabs button.active{border-bottom-color:#68517f;color:#443773}
   .panels>section{display:none}
   .panels>section.mobile-active{display:flex;flex:1}
+  .source-compile{display:flex}
   .editor-container textarea{font-size:1rem;padding:16px;line-height:1.7}
   .preview-footer>span{display:none}
   .preview-footer{justify-content:space-between}
