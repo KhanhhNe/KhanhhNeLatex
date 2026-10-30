@@ -26,17 +26,22 @@ class FakeWorker {
   terminate() { this.terminated = true; }
   send(data) { this.onmessage({ data }); }
 }
-test('compiler serializes jobs, runs two passes and releases worker', async () => {
+test('compiler supersedes jobs, runs two passes and releases worker', async () => {
+  const firstWorker = new FakeWorker();
   const worker = new FakeWorker();
-  const compiler = new LatexCompiler({ workerFactory: () => worker });
+  const workers = [firstWorker, worker];
+  const compiler = new LatexCompiler({ workerFactory: () => workers.shift() });
   const result = compiler.compile('source');
-  await assert.rejects(compiler.compile('second'), /already running/);
+  const cancelled = assert.rejects(result, /cancelled/);
+  const second = compiler.compile('second');
+  await cancelled;
+  assert.equal(firstWorker.terminated, true);
   worker.send({ result: 'ok' });
   assert.deepEqual(worker.messages.map(message => message.cmd), ['writefile', 'setmainfile', 'compilelatex']);
   worker.send({ result: 'ok', cmd: 'compile', pdf: new ArrayBuffer(8), log: 'pass1' });
   assert.equal(worker.messages.at(-1).cmd, 'compilelatex');
   worker.send({ result: 'ok', cmd: 'compile', pdf: new ArrayBuffer(16), log: 'pass2' });
-  assert.equal((await result).pdf.byteLength, 16);
+  assert.equal((await second).pdf.byteLength, 16);
   assert.equal(worker.terminated, true);
   assert.equal(compiler.active, null);
 });
