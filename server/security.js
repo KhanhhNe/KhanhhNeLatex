@@ -21,6 +21,15 @@ export async function verifyPassword(password, stored) {
 export const digest = value => createHash('sha256').update(value).digest('hex');
 export const newToken = () => randomBytes(32).toString('hex');
 
+export function validateCredentials(body, register) {
+  const { username, password } = body || {};
+  const minimum = register ? 8 : 1;
+  if (typeof username !== 'string' || !/^[a-zA-Z0-9_-]{3,32}$/.test(username) ||
+      typeof password !== 'string' || password.length < minimum || password.length > 128)
+    return `Use a 3-32 character username (letters, numbers, _ or -) and a ${minimum}-128 character password.`;
+  return null;
+}
+
 export function validateDocument(body) {
   if (!body || typeof body.title !== 'string' || !body.title.trim() || body.title.length > 100)
     return 'Title must contain 1-100 characters.';

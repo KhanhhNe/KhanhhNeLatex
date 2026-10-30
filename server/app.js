@@ -2,7 +2,7 @@ import express from 'express';
 import { drizzle } from 'drizzle-orm/d1';
 import { and, eq, gt, lt, desc, sql } from 'drizzle-orm';
 import { users, sessions, documents, authLimits } from './schema.js';
-import { hashPassword, verifyPassword, digest, newToken, validateDocument } from './security.js';
+import { hashPassword, verifyPassword, digest, newToken, validateCredentials, validateDocument } from './security.js';
 
 const SESSION_MS = 7 * 86400000;
 const dummyHash = 'scrypt$16384$8$1$00000000000000000000000000000000$' + '0'.repeat(64);
@@ -40,10 +40,9 @@ export function createApp(env) {
   const cookie = (token, secure, age) =>
     `folio_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secure ? '; Secure' : ''}`;
   const authRoute = register => async (req, res) => {
+    const error = validateCredentials(req.body, register);
+    if (error) return res.status(400).json({ error });
     const { username, password } = req.body || {};
-    if (typeof username !== 'string' || !/^[a-zA-Z0-9_-]{3,32}$/.test(username) ||
-        typeof password !== 'string' || password.length < 12 || password.length > 128)
-      return res.status(400).json({ error: 'Use a 3-32 character username (letters, numbers, _ or -) and a 12-128 character password.' });
     const normalized = username.toLowerCase();
     let user = await db.select().from(users).where(eq(users.username, normalized)).get();
     if (register) {
