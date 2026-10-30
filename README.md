@@ -2,6 +2,8 @@
 
 An original, deliberately small Prism-inspired LaTeX workspace. React JavaScript frontend, Express 5 API on Cloudflare Workers' native Node HTTP adapter, Drizzle ORM and Cloudflare D1. No Prism code/assets, AI, image uploads, server compilation, or polling.
 
+The home screen follows the publicly visible Prism Projects dashboard's high-level structure: dark project surface, narrow navigation, search, list/grid views, sortable document rows, Import and New actions. All UI code, branding and copy are original. Prism's signed-in editor was not publicly accessible; the source/PDF workspace preserves this application's accessible, responsive split layout rather than claiming an exact recreation. Open a project to write, or use `/#workspace` to reopen the latest device draft directly. Monaco and pdfTeX begin loading only when the workspace opens, not while browsing projects.
+
 ## Local development
 
 Requires Node 26.12+ (or a cf-supported Node version), npm, and a Chromium-compatible browser with WebAssembly, Workers and IndexedDB.
@@ -28,7 +30,7 @@ The browser tests include a real WASM PDF compile/export, worker cancellation/er
 
 - One text-only UTF-8 `.tex` file per document, maximum 100,000 characters; imports also limited to 400 KB. No image, font, binary or other source uploads.
 - IndexedDB device drafts save after a 300 ms pause and flush on document switches/visibility changes. Pending/failed saves are explicit; pending writes warn before navigation. Export `.tex` for backups, especially before clearing browser data or changing devices. Device drafts are not encrypted; use a trusted personal device.
-- Cloud saves are **explicit**, using the Save button or Ctrl+S. Typing/compiling never sends document source to the API. Sign-in is optional for local editing, compiling and exports.
+- Local drafts save automatically. Use **Save to account** once to link a local draft; while signed in as its owner, subsequent edits automatically save to D1 after an 800 ms pause. Cloud writes are serialized/coalesced, preserve revision checks, and show failures without discarding the local draft. Ctrl/Cmd+S only forces a fresh compilation, never an immediate save. Unlinked drafts stay local; sign-in is optional for editing, compilation and exports.
 - D1 stores source in a `TEXT` column. Every document operation is owner-scoped. Atomic revision checks reject stale cloud updates rather than overwriting them. Up to 100 cloud documents per account.
 - Accounts use case-insensitive 3-32 character usernames and 8-128 character passwords. Salted scrypt (N=16384,r=8,p=1), hashed random 256-bit session tokens, seven-day HttpOnly/SameSite=Strict cookies (Secure on HTTPS), strict mutation origins, parameterized Drizzle queries, request limits and D1-backed auth throttling. No password reset/recovery is provided in this minimal version.
 
@@ -38,7 +40,9 @@ Real SwiftLaTeX pdfTeX WASM, not HTML printing or math-only rendering. A lazy-lo
 
 The included subset covers the tested `article` (10/11 pt), `report` and `book` (10 pt) classes, `amsmath`, `amssymb`, `geometry` and the Computer Modern fonts exercised by the fixtures. This is **not a full TeX Live installation**. Arbitrary packages, fonts, Unicode scripts, shell escape, source assets, and uploaded bibliographies are unsupported. Missing packages return compiler logs. `scripts/bundle-tex.mjs` is an explicit maintainer asset-acquisition tool; the deployed application never downloads additional packages or contacts that mirror.
 
-The initial app is about 77 KB JS gzip plus 4 KB CSS gzip. First compile fetches roughly 13 MB uncompressed runtime/format/package assets; the largest is the 10.36 MB format, below Cloudflare's 25 MiB per-file limit. Browser HTTP caching avoids repeat network transfer where supported, but a new bounded Worker is created per compile, trading some startup work for lower idle RAM. Active compiler memory can exceed 100 MB. Manual compilation avoids CPU churn. 120 fps/8.33 ms is a design target, not a guarantee on low-end devices. No artificial claim of zero CPU/RAM or universal package support.
+The source pane uses a reusable Monaco Editor with an original LaTeX tokenizer, a high-contrast light theme, full clipboard/undo, two-space indentation and Shift+Tab to leave the editor. Ctrl/Cmd+S and Ctrl/Cmd+Enter always request compilation only, even when source is unchanged. Monaco begins loading as soon as the source pane mounts, with an immediately editable plain-text fallback while it loads (also retained with a visible error/retry if loading fails). Only the editor API and selected editing contributions are bundled; unused language services and minimap are disabled. One editor/model is kept for the active document and disposed on switches. Its text worker is self-hosted and never compiles TeX; pdfTeX remains the only compiler.
+
+Monaco adds a significant separately loaded editor chunk; production build output reports its exact compressed size. First compile fetches roughly 13 MB uncompressed runtime/format/package assets; the largest is the 10.36 MB format, below Cloudflare's 25 MiB per-file limit. Browser HTTP caching avoids repeat network transfer where supported. Active compiler memory can exceed 100 MB. Manual compilation avoids CPU churn. 120 fps/8.33 ms is a design target, not a guarantee on low-end devices. No artificial claim of zero CPU/RAM or universal package support.
 
 Editing remains usable offline while the app is loaded; IndexedDB persists drafts. This version does not install a service worker, so a first visit/reload offline and uncached compiler assets require a connection.
 

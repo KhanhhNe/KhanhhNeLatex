@@ -10,7 +10,7 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 },
     screenshot: 'only-on-failure',
   },
-  webServer: {
+  webServer: process.env.BASE_URL ? undefined : {
     command: 'npm run build && npm run preview',
     url: 'http://127.0.0.1:8787/api/health',
     reuseExistingServer: !process.env.CI,

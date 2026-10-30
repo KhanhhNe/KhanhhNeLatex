@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { LatexCompiler } from './compiler.js';
 import { api, drafts, download, readTex } from './storage.js';
+import LatexEditor from './components/LatexEditor.jsx';
+import ProjectsView from './components/ProjectsView.jsx';
 import './style.css';
 
 const starter = String.raw`\documentclass[11pt]{article}
@@ -56,6 +58,7 @@ function App() {
   const [cloud, setCloud] = useState([]);
   const [saveState, setSaveState] = useState('Loading local drafts...');
   const [error, setError] = useState('');
+  const [view, setView] = useState(() => location.hash === '#workspace' ? 'workspace' : 'projects');
   const [auth, setAuth] = useState(null);
   const [busy, setBusy] = useState(false);
   const [compiling, setCompiling] = useState(false);
@@ -69,7 +72,6 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [live, setLive] = useState(false);
   const [engineState, setEngineState] = useState('Preparing browser engine...');
-  const editor = useRef(null);
   const fileInput = useRef(null);
   const active = useRef(null);
   const timer = useRef(null);
@@ -92,8 +94,24 @@ function App() {
   const requestedSource = useRef(null);
   const compileDuration = useRef(0);
   const cloudTimings = useRef(new Map());
+  const cloudTimers = useRef(new Map());
+  const cloudSnapshots = useRef(new Map());
+  const cloudQueue = useRef(new Map());
+  const cloudSaving = useRef(false);
+  const account = useRef(null);
+  account.current = user;
 
   function notice(reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  function showWorkspace() {
+    history.replaceState(null, '', '#workspace');
+    setView('workspace');
+  }
+  function showProjects() {
+    history.replaceState(null, '', location.pathname + location.search);
+    setView('projects');
+    if (compiler.current.active) cancelCompile();
+    else compiler.current.cancel();
+  }
   function discardPendingViewer() {
     const viewer = pendingViewer.current;
     if (!viewer) return;
@@ -162,6 +180,8 @@ function App() {
   function update(patch) {
     const next = { ...active.current, ...patch, dirty: true, updated_at: Date.now() };
     active.current = next;
+    setCurrent(next);
+    scheduleCloud(next);
     pending.current = true;
     setSaveState('Saving on this device...');
     clearTimeout(timer.current);
@@ -172,8 +192,13 @@ function App() {
     }
   }
   async function select(document, force = false) {
+    showWorkspace();
     const selection = ++selectionRequest.current;
-    if (!force && document.id === active.current?.id) { setSidebar(false); return; }
+    if (!force && document.id === active.current?.id) {
+      setSidebar(false);
+      if (!shownPdf.current && !compiler.current.active) compile({ reveal: false });
+      return;
+    }
     try {
       await flush();
       if (selection !== selectionRequest.current) return;
@@ -185,6 +210,7 @@ function App() {
       generation.current++;
       active.current = document;
       setCurrent(document);
+      if (document.dirty) scheduleCloud(document);
       setDocuments(list => [document, ...list.filter(item => item.id !== document.id)]);
       compiledSource.current = null;
       requestedSource.current = null;
@@ -217,11 +243,6 @@ function App() {
       liveEnabled.current = localStorage.getItem('folio-live-preview') === 'true';
       setLive(liveEnabled.current);
     } catch { notice(new Error('Could not read the live preview preference. This session starts with live preview off.')); }
-    compiler.current.warmup().then(timing => {
-      if (!disposed) setEngineState(`Engine initialized · ${elapsed(timing.initializationMs)}`);
-    }).catch(reason => {
-      if (!disposed && reason.message !== 'Compilation cancelled.') notice(reason);
-    });
     drafts.all().then(async list => {
       const document = list.sort((a, b) => b.updated_at - a.updated_at)[0] || makeDraft();
       if (!list.length) await drafts.put(document);
@@ -229,9 +250,10 @@ function App() {
       for (const draft of list.length ? list : [document]) persisted.current.add(draft);
       active.current = document;
       setCurrent(document);
+      if (document.dirty) scheduleCloud(document);
       setDocuments(list.length ? list : [document]);
       setSaveState('Saved on this device');
-      compile({ reveal: false });
+      if (view === 'workspace') compile({ reveal: false });
     }).catch(notice);
     api('/me').then(data => {
       if (!disposed) { setUser(data.user); refreshCloud().catch(notice); }
@@ -246,6 +268,8 @@ function App() {
     document.addEventListener('visibilitychange', hidden);
     return () => {
       disposed = true;
+      for (const timeout of cloudTimers.current.values()) clearTimeout(timeout);
+      cloudTimers.current.clear();
       clearTimeout(timer.current);
       clearTimeout(liveTimer.current);
       compileRequest.current++;
@@ -257,6 +281,16 @@ function App() {
       document.removeEventListener('visibilitychange', hidden);
     };
   }, []);
+  useEffect(() => {
+    if (view !== 'workspace') return;
+    let disposed = false;
+    compiler.current.warmup().then(timing => {
+      if (!disposed) setEngineState(`Engine initialized · ${elapsed(timing.initializationMs)}`);
+    }).catch(reason => {
+      if (!disposed && reason.message !== 'Compilation cancelled.') notice(reason);
+    });
+    return () => { disposed = true; };
+  }, [view]);
 
   function scheduleLive() {
     clearTimeout(liveTimer.current);
@@ -335,40 +369,69 @@ function App() {
       setLog(reason.log || reason.message);
     } finally { if (run === compileRequest.current) setCompiling(false); }
   }
-  async function sync() {
-    if (!active.current) return;
-    if (!user) { setAuth('login'); return; }
-    if (busy) return;
-    setBusy(true); setError('');
-    const snapshot = active.current;
+  function scheduleCloud(document) {
+    cloudSnapshots.current.set(document.id, document);
+    clearTimeout(cloudTimers.current.get(document.id));
+    if (!account.current || document.owner !== account.current.id || !document.cloudId) return;
+    cloudTimers.current.set(document.id, setTimeout(() => {
+      cloudTimers.current.delete(document.id);
+      sync({ snapshot: cloudSnapshots.current.get(document.id), automatic: true });
+    }, 800));
+  }
+  useEffect(() => {
+    if (user && active.current?.dirty) scheduleCloud(active.current);
+  }, [user]);
+  async function sync({ snapshot = active.current, automatic = false } = {}) {
+    if (!snapshot) return;
+    const owner = account.current;
+    if (!owner) { if (!automatic) setAuth('login'); return; }
+    if (automatic && (snapshot.owner !== owner.id || !snapshot.cloudId)) return;
+    clearTimeout(cloudTimers.current.get(snapshot.id));
+    cloudTimers.current.delete(snapshot.id);
+    if (cloudSaving.current) { cloudQueue.current.set(snapshot.id, { snapshot, automatic }); return; }
+    cloudSaving.current = true;
+    cloudSnapshots.current.set(snapshot.id, snapshot);
+    if (!automatic) setBusy(true);
+    setError('');
     let localSaved = false;
     try {
       await persist(snapshot);
       localSaved = true;
-      setSaveState('Saving to your account...');
+      if (active.current?.id === snapshot.id) setSaveState('Saving to your account...');
       let saved;
       const started = performance.now();
-      if (snapshot.cloudId && snapshot.owner === user.id) {
+      if (snapshot.cloudId && snapshot.owner === owner.id) {
         const data = await api(`/documents/${snapshot.cloudId}`, {
           title: snapshot.title, source: snapshot.source, revision: snapshot.revision,
         }, 'PUT');
         saved = { ...snapshot, revision: data.revision };
       } else {
         const { document } = await api('/documents', { title: snapshot.title, source: snapshot.source });
-        saved = { ...snapshot, cloudId: document.id, revision: document.revision, owner: user.id };
+        saved = { ...snapshot, cloudId: document.id, revision: document.revision, owner: owner.id };
       }
       cloudTimings.current.set(snapshot.id, performance.now() - started);
-      const next = active.current.id === snapshot.id
-        ? { ...active.current, cloudId: saved.cloudId, owner: user.id, revision: saved.revision, dirty: active.current !== snapshot }
-        : { ...saved, dirty: false };
-      if (active.current.id === next.id) active.current = next;
+      const latest = active.current?.id === snapshot.id ? active.current : cloudSnapshots.current.get(snapshot.id);
+      const next = { ...latest, cloudId: saved.cloudId, owner: owner.id, revision: saved.revision, dirty: latest !== snapshot };
+      cloudSnapshots.current.set(next.id, next);
+      if (active.current?.id === next.id) { active.current = next; setCurrent(next); }
       await persist(next);
-      await refreshCloud();
+      if (account.current?.id === owner.id) await refreshCloud();
+      if (next.dirty && account.current?.id === owner.id) scheduleCloud(next);
     } catch (reason) {
       notice(reason);
       if (localSaved && active.current?.id === snapshot.id) setSaveState('Cloud save failed - device draft kept');
     }
-    finally { setBusy(false); }
+    finally {
+      cloudSaving.current = false;
+      if (!automatic) setBusy(false);
+      const queued = cloudQueue.current.entries().next().value;
+      if (queued) {
+        const [id, request] = queued;
+        cloudQueue.current.delete(id);
+        const latest = cloudSnapshots.current.get(id) || request.snapshot;
+        if (latest.dirty) sync({ ...request, snapshot: latest });
+      }
+    }
   }
   async function openCloud(item) {
     const request = ++selectionRequest.current;
@@ -383,8 +446,13 @@ function App() {
     } catch (reason) { notice(reason); }
   }
   async function remove() {
+    if (cloudSaving.current) { notice(new Error('Wait for the account save to finish before deleting this document.')); return; }
     const snapshot = active.current;
     if (!snapshot || !window.confirm(`Delete "${snapshot.title}"${snapshot.cloudId ? ' from this device and your account' : ''}? This cannot be undone.`)) return;
+    clearTimeout(cloudTimers.current.get(snapshot.id));
+    cloudTimers.current.delete(snapshot.id);
+    cloudQueue.current.delete(snapshot.id);
+    cloudSnapshots.current.delete(snapshot.id);
     setBusy(true);
     try {
       await persist();
@@ -418,7 +486,6 @@ function App() {
       if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) {
         event.preventDefault();
         actions.current.compile();
-        if (event.key !== 'Enter') actions.current.sync();
       }
       if (event.key === 'Escape') { setAuth(null); setShowHelp(false); setSidebar(false); }
     };
@@ -428,7 +495,13 @@ function App() {
 
   return <div className="app">
     <div className="app-content" inert={auth || showHelp ? true : undefined}>
+    {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
+    <input ref={fileInput} type="file" accept=".tex,text/plain,application/x-tex" hidden onChange={importFile} />
+    {view === 'projects' ? <ProjectsView documents={documents} onOpen={document => select(document)} onNew={() => newDocument()}
+      onImport={() => fileInput.current.click()} username={user?.username}
+      onSignIn={() => user ? showWorkspace() : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className="workspace-view">
     <header className="topbar">
+      <button className="icon projects-back" aria-label="Your projects" onClick={showProjects}>▤</button>
       <button className="icon mobile-menu" aria-label="Toggle documents" aria-expanded={sidebar} aria-controls="document-sidebar" onClick={() => setSidebar(!sidebar)}>☰</button>
       <a className="brand" href="/" aria-label="KhanhhNeLatex home"><span className="brand-mark">k</span><span className="brand-name">KhanhhNeLatex</span><span className="brand-label">A LATEX WORKSPACE</span></a>
       <div className="top-actions"><span className="local-badge"><i /> Local-first</span>
@@ -439,7 +512,6 @@ function App() {
         }}>{user.username} <span> / Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}>Sign in <span>↗</span></button>}
       </div>
     </header>
-    {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
     <div className="workspace">
       <aside id="document-sidebar" className={`sidebar ${sidebar ? 'open' : ''}`}>
         <div className="sidebar-heading"><span>YOUR WORKSPACE</span><span className="tiny">TEXT ONLY</span></div>
@@ -455,7 +527,6 @@ function App() {
         </nav></>}
         <div className="sidebar-bottom">
           <button className="import-button" onClick={() => fileInput.current.click()} disabled={busy}>↥ <span>Import .tex file</span></button>
-          <input ref={fileInput} type="file" accept=".tex,text/plain,application/x-tex" hidden onChange={importFile} />
           <div className="privacy-card"><span>Made for a little focus.</span><p>Write locally. Compile privately.<br />No uploads required.</p></div>
           <button className="delete-button" onClick={remove} disabled={!current || busy}>Delete current document</button>
         </div>
@@ -482,18 +553,10 @@ function App() {
               <button className="compile-button source-compile" aria-label={compiling ? 'Cancel' : 'Compile'} disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>{compiling ? 'Cancel' : 'Compile'}</button>
             </div>
             <div className="editor-container">
-              <textarea ref={editor} key={`${current?.id || 'loading'}:${generation.current}`} defaultValue={current?.source || ''} disabled={!current}
-                aria-label="LaTeX source" aria-describedby="source-shortcuts" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={100000}
-                onChange={event => update({ source: event.target.value })}
-                onKeyDown={event => {
-                  if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
-                    event.preventDefault();
-                    const input = event.currentTarget;
-                    if (input.value.length - (input.selectionEnd - input.selectionStart) + 2 > input.maxLength) return;
-                    input.setRangeText('  ', input.selectionStart, input.selectionEnd, 'end');
-                    update({ source: input.value });
-                  }
-                }} />
+              <LatexEditor documentKey={`${current?.id || 'loading'}:${generation.current}`}
+                value={current?.source || ''} loading={!current}
+                onChange={source => update({ source })}
+                onSave={() => compile()} onCompile={() => compile()} />
             </div>
             <div className="editor-footer"><span>UTF-8 / Text only</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>
           </section>
@@ -530,6 +593,7 @@ function App() {
         </div>
       </main>
     </div>
+    </div>}
     </div>
     {auth && <AuthDialog mode={auth} setMode={setAuth} onClose={() => setAuth(null)} onSuccess={async signedIn => {
       setUser(signedIn); setAuth(null);
@@ -575,7 +639,7 @@ function HelpDialog({ onClose }) {
         <p>Each document is one UTF-8 .tex file, up to 100,000 characters. Images, binary files and external source assets are not supported.</p>
         <p>The bundled pdfTeX engine supports article, report, book, amsmath, amssymb, geometry and standard Computer Modern fonts. No shell escape, bibliography uploads, custom fonts, or automatic package downloads. Use pdfLaTeX-compatible text; full Unicode and every CTAN package are not supported.</p>
         <p>The engine starts loading when you open this page, and each opened document gets an initial preview. Enable Live preview for debounced updates after editing pauses; it starts off to avoid background CPU churn. Your choice is saved on this device. Compile manually with <kbd>Ctrl</kbd> + <kbd>Enter</kbd>. Two passes resolve cross-references. A new compile replaces the previous job; Cancel stops it immediately, and jobs time out after 60 seconds.</p>
-        <p>Drafts are saved on this browser/device after a short pause. <kbd>Ctrl</kbd> + <kbd>S</kbd> always recompiles and also saves to your account if signed in; cloud saves are explicit, require sign-in, and never happen while typing. Compilation timings measure typesetting, engine startup is shown separately, and cloud-save timings measure the full request round trip, not just database work. Export .tex for a portable backup. Device drafts are not encrypted; use your own device.</p>
+        <p>Drafts save automatically on this device after a short pause. Use Save to account once to link a draft; subsequent edits save automatically after an 800 ms pause while signed in as its owner. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>S</kbd> only forces a fresh compilation, even when source is unchanged. Cloud failures keep your device draft. Compilation timings measure typesetting, engine startup is shown separately, and cloud-save timings measure the full request round trip, not just database work. Export .tex for a portable backup. Device drafts are not encrypted; use your own device.</p>
         <p>The engine downloads only on first compile (~15 MB uncompressed), can use around 100 MB or more while active, and is released after each job. 120 fps is a design target, not a guarantee on every device.</p>
         <a href="/compiler/NOTICE.txt" target="_blank" rel="noreferrer">Compiler credits and source ↗</a>
       </section>
