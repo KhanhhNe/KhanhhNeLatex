@@ -18,7 +18,7 @@ export async function readSource(page) {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await sourceEditor(page).press('Control+a');
   await sourceEditor(page).press('Control+c');
-  return page.evaluate(() => navigator.clipboard.readText());
+  return page.evaluate(async () => (await navigator.clipboard.readText()).replace(/\r\n/g, '\n'));
 }
 
 export async function expectSource(page, text) {

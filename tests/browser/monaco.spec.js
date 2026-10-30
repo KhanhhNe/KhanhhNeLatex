@@ -8,7 +8,7 @@ test('Monaco preserves controlled editing, selection, undo, full clipboard and o
     if (/^https?:/.test(request.url()) && new URL(request.url()).origin !== new URL(test.info().project.use.baseURL).origin)
       external.push(request.url());
   });
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await editorReady(page);
   await expect(page.locator('.latex-editor')).toHaveAttribute('data-language', 'latex');
   const source = '\\section{Original}\n% a comment\nText with $x^2$.';
@@ -38,7 +38,7 @@ test('Monaco preserves controlled editing, selection, undo, full clipboard and o
 });
 
 test('Monaco rejects oversized and non-text edits without losing accepted source or undo', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await fillSource(page, 'accepted source');
   await page.keyboard.insertText('x'.repeat(100001));
   await expect(page.getByRole('alert')).toContainText('last edit was not accepted');
@@ -56,7 +56,7 @@ test('loading Monaco leaves an immediately editable fallback and preserves its s
   let release;
   const held = new Promise(resolve => { release = resolve; });
   await page.route(/\/assets\/monaco-[^/]+\.js$/, async route => { await held; await route.continue(); });
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   const fallback = page.locator('.latex-editor-fallback');
   await expect(fallback).toBeEnabled();
   await fallback.fill('fallback edit');

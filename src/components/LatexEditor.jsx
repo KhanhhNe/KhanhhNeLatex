@@ -43,7 +43,7 @@ export default function LatexEditor({
 
   useEffect(() => {
     let disposed = false;
-    let instance, model, change, resize;
+    let instance, model, change, resize, guard;
     setReady(false);
     setError('');
     preloadLatexEditor().then(({ monaco }) => {
@@ -51,13 +51,15 @@ export default function LatexEditor({
       const current = latest.current;
       const focused = document.activeElement === fallback.current;
       const selection = fallback.current && [fallback.current.selectionStart, fallback.current.selectionEnd];
+      host.current.hidden = false;
       model = monaco.editor.createModel(current.value, 'latex');
+      model.setEOL(monaco.editor.EndOfLineSequence.LF);
       instance = monaco.editor.create(host.current, {
         model, theme: 'folio', ariaLabel: current.ariaLabel,
         readOnly: current.readOnly || current.loading,
         fontFamily: '"Cascadia Code", Consolas, "Liberation Mono", monospace',
         fontSize: 16, lineHeight: 27, tabSize: 2, insertSpaces: true,
-        minimap: { enabled: false }, wordWrap: 'on', wrappingIndent: 'same',
+        minimap: { enabled: false }, wordWrap: 'off',
         scrollBeyondLastLine: false, folding: false, glyphMargin: false,
         lineNumbersMinChars: 3, overviewRulerLanes: 0, hideCursorInOverviewRuler: true,
         renderLineHighlight: 'line', selectionHighlight: false, occurrencesHighlight: 'off',
@@ -67,13 +69,26 @@ export default function LatexEditor({
         hover: { enabled: false }, stickyScroll: { enabled: false },
         matchBrackets: 'near', renderValidationDecorations: 'off',
         unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
-        accessibilitySupport: 'on', experimentalEditContextEnabled: false,
+        accessibilitySupport: 'on', editContext: false,
         tabIndex: 0, padding: { top: 16, bottom: 20 },
         automaticLayout: false, contextmenu: false,
         stopRenderingLineAfter: 2000, largeFileOptimizations: true,
         scrollbar: { alwaysConsumeMouseWheel: false },
       });
       editor.current = instance;
+      guard = event => {
+        const text = event.type === 'paste' ? event.clipboardData?.getData('text/plain') : event.data;
+        if (typeof text !== 'string') return;
+        const selection = instance.getSelection();
+        const length = model.getValueLength() - model.getValueInRange(selection).length + text.length;
+        if (length > 100000 || !validSource(text)) {
+          event.preventDefault();
+          event.stopPropagation();
+          setError('Source must be valid text, at most 100,000 characters. The last edit was not accepted.');
+        }
+      };
+      host.current.addEventListener('beforeinput', guard, true);
+      host.current.addEventListener('paste', guard, true);
       change = model.onDidChangeContent(() => {
         if (replacing.current) return;
         const next = model.getValue();
@@ -107,6 +122,8 @@ export default function LatexEditor({
     return () => {
       disposed = true;
       resize?.disconnect();
+      host.current?.removeEventListener('beforeinput', guard, true);
+      host.current?.removeEventListener('paste', guard, true);
       change?.dispose();
       instance?.dispose();
       model?.dispose();

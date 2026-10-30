@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { LatexCompiler } from './compiler.js';
 import { api, drafts, download, readTex } from './storage.js';
+import LatexEditor from './components/LatexEditor.jsx';
 import './style.css';
 
 const starter = String.raw`\documentclass[11pt]{article}
@@ -69,7 +70,6 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [live, setLive] = useState(false);
   const [engineState, setEngineState] = useState('Preparing browser engine...');
-  const editor = useRef(null);
   const fileInput = useRef(null);
   const active = useRef(null);
   const timer = useRef(null);
@@ -162,6 +162,7 @@ function App() {
   function update(patch) {
     const next = { ...active.current, ...patch, dirty: true, updated_at: Date.now() };
     active.current = next;
+    setCurrent(next);
     pending.current = true;
     setSaveState('Saving on this device...');
     clearTimeout(timer.current);
@@ -418,7 +419,6 @@ function App() {
       if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) {
         event.preventDefault();
         actions.current.compile();
-        if (event.key !== 'Enter') actions.current.sync();
       }
       if (event.key === 'Escape') { setAuth(null); setShowHelp(false); setSidebar(false); }
     };
@@ -482,18 +482,10 @@ function App() {
               <button className="compile-button source-compile" aria-label={compiling ? 'Cancel' : 'Compile'} disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>{compiling ? 'Cancel' : 'Compile'}</button>
             </div>
             <div className="editor-container">
-              <textarea ref={editor} key={`${current?.id || 'loading'}:${generation.current}`} defaultValue={current?.source || ''} disabled={!current}
-                aria-label="LaTeX source" aria-describedby="source-shortcuts" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={100000}
-                onChange={event => update({ source: event.target.value })}
-                onKeyDown={event => {
-                  if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
-                    event.preventDefault();
-                    const input = event.currentTarget;
-                    if (input.value.length - (input.selectionEnd - input.selectionStart) + 2 > input.maxLength) return;
-                    input.setRangeText('  ', input.selectionStart, input.selectionEnd, 'end');
-                    update({ source: input.value });
-                  }
-                }} />
+              <LatexEditor documentKey={`${current?.id || 'loading'}:${generation.current}`}
+                value={current?.source || ''} loading={!current}
+                onChange={source => update({ source })}
+                onSave={() => compile()} onCompile={() => compile()} />
             </div>
             <div className="editor-footer"><span>UTF-8 / Text only</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>
           </section>
