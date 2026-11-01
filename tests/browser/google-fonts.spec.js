@@ -230,6 +230,8 @@ test('workspace exports real embedded fonts and unchanged source, preserves last
   await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });
+  await expect(page.locator('.pdf-viewer.pending')).toHaveCount(0, { timeout: 15000 });
+  await expect(page.locator('.pdf-viewer canvas').first()).toBeVisible();
   const iframe = page.locator('.pdf-viewer[title="Compiled PDF"]');
   await expect(iframe).toBeVisible();
   const goodUrl = await iframe.getAttribute('data-src');
