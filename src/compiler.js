@@ -1,7 +1,10 @@
 import { detectFonts, usesFontspec, GoogleFontLoader } from './google-fonts.js';
+import { createEngineWarmup, takeEarlyWarmup, PDFTEX_WORKER } from './engine-start.js';
+
+const defaultWorkerFactory = engine => new Worker(engine === 'xetex' ? '/compiler/native-worker.js?v=startup-4' : PDFTEX_WORKER);
 
 export class LatexCompiler {
-  constructor({ workerFactory = engine => new Worker(engine === 'xetex' ? '/compiler/native-worker.js?v=startup-4' : '/compiler/worker.js?v=startup-5'), timeout = 60000, loadTimeout = 300000, idleTimeout = 60000, fontLoader = new GoogleFontLoader() } = {}) {
+  constructor({ workerFactory = defaultWorkerFactory, timeout = 60000, loadTimeout = 300000, idleTimeout = 60000, fontLoader = new GoogleFontLoader() } = {}) {
     this.workerFactory = workerFactory;
     this.timeout = timeout;
     this.loadTimeout = loadTimeout;
@@ -13,44 +16,15 @@ export class LatexCompiler {
 
   warmup() {
     if (this.active) return this.active.warmup();
+    if (this.warming?.disposed) this.warming = null;
     if (this.warming) return this.warming.promise;
-    const startedAt = performance.now();
-    let worker;
-    try { worker = this.workerFactory(); } catch (error) { return Promise.reject(error); }
-    let resolve;
-    let reject;
-    const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
-    const warming = {
-      worker, promise, resolve, reject, startedAt, ready: false, initializationMs: 0,
-      dispose: error => {
-        if (this.warming !== warming) return;
-        this.warming = null;
-        clearTimeout(warming.timer);
-        worker.onmessage = null;
-        worker.onerror = null;
-        worker.onmessageerror = null;
-        worker.terminate();
-        reject(error);
-      },
-    };
-    const expire = () => warming.dispose(new Error('Browser engine warmup expired. Compile to restart it.'));
-    warming.timer = setTimeout(() => warming.dispose(new Error('Browser engine loading timed out. Check your connection and try again.')), this.loadTimeout);
-    this.warming = warming;
-    worker.onerror = event => warming.dispose(new Error(event.message || 'The browser compiler could not load.'));
-    worker.onmessageerror = () => warming.dispose(new Error('The browser compiler returned an unreadable message. Try compiling again.'));
-    worker.onmessage = ({ data }) => {
-      if (this.warming !== warming || warming.ready) return;
-      if (!data?.cmd && data?.result === 'ok') {
-        warming.ready = true;
-        warming.initializationMs = performance.now() - startedAt;
-        clearTimeout(warming.timer);
-        warming.timer = setTimeout(expire, this.idleTimeout);
-        resolve({ initializationMs: warming.initializationMs });
-      } else if (data?.result === 'failed') {
-        warming.dispose(new Error('The browser compiler could not load.'));
-      }
-    };
-    return promise;
+    try {
+      this.warming = (this.workerFactory === defaultWorkerFactory && takeEarlyWarmup()) ||
+        createEngineWarmup(this.workerFactory, this.loadTimeout, this.idleTimeout);
+      const warming = this.warming;
+      warming.onDispose = () => { if (this.warming === warming) this.warming = null; };
+      return this.warming.promise;
+    } catch (error) { return Promise.reject(error); }
   }
 
   compile(source, onStatus = () => {}) {
@@ -62,7 +36,9 @@ export class LatexCompiler {
   }
 
   compileNative(source, declarations, onStatus) {
+    if (this.workerFactory === defaultWorkerFactory) takeEarlyWarmup()?.dispose(new Error('Compilation cancelled.'));
     this.warming?.dispose(new Error('Compilation cancelled.'));
+    this.warming = null;
     const controller = new AbortController();
     return this.compilePrepared(source, onStatus, {
       engine: 'xetex', controller,
@@ -72,7 +48,8 @@ export class LatexCompiler {
 
   compilePrepared(source, onStatus, { engine = 'pdftex', controller, prepare } = {}) {
     const requestedAt = performance.now();
-    const warming = this.warming;
+    const warming = (this.warming?.disposed ? null : this.warming) ||
+      (engine === 'pdftex' && this.workerFactory === defaultWorkerFactory ? takeEarlyWarmup() : null);
     this.warming = null;
     if (warming) clearTimeout(warming.timer);
     return new Promise((resolve, reject) => {
@@ -212,5 +189,6 @@ export class LatexCompiler {
   cancel() {
     this.active?.cancel();
     this.warming?.dispose(new Error('Compilation cancelled.'));
+    this.warming = null;
   }
 }

@@ -2,9 +2,22 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   plugins: [react(), {
+    name: 'independent-engine-start',
+    buildStart() {
+      this.emitFile({ type: 'chunk', id: fileURLToPath(new URL('./src/engine-start.js', import.meta.url)), name: 'engine-start', preserveSignature: 'strict' });
+    },
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, context) {
+        const entry = context.bundle && Object.values(context.bundle).find(chunk => chunk.type === 'chunk' && chunk.name === 'engine-start' && chunk.isEntry);
+        return { html, tags: [{ tag: 'script', attrs: { type: 'module', src: entry ? `/${entry.fileName}` : '/src/engine-start.js' }, injectTo: 'head-prepend' }] };
+      },
+    },
+  }, {
     name: 'local-renderer-assets-and-license-notices',
     generateBundle() {
       for (const [fileName, source] of [
