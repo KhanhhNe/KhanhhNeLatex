@@ -56,7 +56,7 @@ test('legacy device drafts receive persistent codes without changing their sourc
   await expect(page.getByRole('list', { name: 'Projects' })).toBeVisible();
   await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('folio-drafts', 1);
+      const request = indexedDB.open('folio-drafts');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -86,16 +86,16 @@ test('a delayed account save does not navigate away from projects', async ({ pag
   let refreshed = false;
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', async route => {
-    if (route.request().method() === 'GET') {
-      if (finishSave) refreshed = true;
-      return route.fulfill({ json: { documents: [] } });
-    }
+    if (finishSave) refreshed = true;
+    return route.fulfill({ json: { documents: [] } });
+  });
+  await page.route('**/api/documents/sync', async route => {
     await new Promise(resolve => { finishSave = resolve; });
-    await route.fulfill({ json: { document: { id: 'cloud', code: route.request().postDataJSON().code, revision: 1 } } });
+    await route.fulfill({ json: { document: { ...route.request().postDataJSON(), id: 'cloud', revision: 1 } } });
   });
   await page.goto('/#workspace');
   await editorReady(page);
-  await page.getByRole('button', { name: 'Save to account', exact: true }).click();
+  // Sign-in restoration initiates this first synchronization automatically.
   await expect.poll(() => Boolean(finishSave)).toBe(true);
   await page.getByRole('button', { name: 'Your projects', exact: true }).click();
   finishSave();

@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { editorReady } from './source-editor.js';
 
 const longTitle = 'Research notes on typography and accessible document navigation with a very long descriptive title';
-const source = '\\documentclass{article}\\begin{document}Card test\\end{document}';
 
 test('an unavailable last-edited date does not prevent opening the workspace', async ({ page }) => {
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
@@ -23,26 +22,27 @@ for (const [profile, options] of [
   ['iphone-webkit', devices['iPhone 13 Pro']],
 ]) {
   test.describe(profile, () => {
-    test('document titles wrap across cards and secondary actions stay inside', async ({ baseURL }) => {
+    test('document titles wrap across single-document cards with metadata inside', async ({ baseURL }) => {
       const browserType = profile === 'iphone-webkit' ? webkit : chromium;
       const browser = await browserType.launch();
       const context = await browser.newContext({ ...options, baseURL });
       const page = await context.newPage();
       try {
-      let shared;
+      const shared = new Map();
       let accountOpens = 0;
       await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
       await page.route('**/api/documents', route => {
-        if (route.request().method() === 'GET') {
-          return route.fulfill({ json: { documents: shared ? [shared] : [] } });
-        }
-        shared = { id: 'shared-cloud', code: route.request().postDataJSON().code,
-          title: longTitle, source, revision: 1, updated_at: Date.now() - 60000 };
-        return route.fulfill({ json: { document: { id: shared.id, code: shared.code, revision: 1 } } });
+        return route.fulfill({ json: { documents: [...shared.values()] } });
       });
-      await page.route('**/api/documents/shared-cloud', route => {
+      await page.route('**/api/documents/sync', route => {
+        const posted = route.request().postDataJSON();
+        const document = { ...posted, id: `card-${posted.code}`, revision: 1, updated_at: Date.now() - 60000 };
+        shared.set(document.id, document);
+        return route.fulfill({ json: { document } });
+      });
+      await page.route('**/api/documents/card-*', route => {
         accountOpens++;
-        return route.fulfill({ json: { document: shared } });
+        return route.fulfill({ json: { document: shared.get(route.request().url().split('/').at(-1)) } });
       });
       await page.goto('/#workspace');
       await editorReady(page);
@@ -59,13 +59,14 @@ for (const [profile, options] of [
       await page.locator('.sidebar .new-document').click();
       await editorReady(page);
       await page.getByRole('textbox', { name: 'Document title', exact: true }).fill('Short notes');
-      await expect(page.locator('.save-state')).toContainText('Saved on this device');
+      await expect(page.locator('.save-state')).toContainText('Saved to your account');
       await openDrawer();
 
       const card = page.locator('.document-row').filter({ hasText: longTitle });
       const select = card.locator('.document-item');
       const title = card.locator('.document-name');
-      const cloud = card.getByRole('button', { name: `Open account version of ${longTitle}`, exact: true });
+      const details = card.locator('.document-details');
+      await expect(card.getByRole('button', { name: /Open account version/ })).toHaveCount(0);
       await expect(select).toHaveAccessibleName(longTitle);
       await expect(card.getByRole('img', { name: 'Available on this device and in your account' })).toBeVisible();
       await expect(card.locator('time')).toHaveAttribute('datetime', /T/);
@@ -76,15 +77,13 @@ for (const [profile, options] of [
           await page.getByRole('separator', { name: 'Document sidebar width', exact: true }).focus();
           await page.keyboard.press('Home');
         }
-        const boxes = await Promise.all([card, title, cloud].map(locator => locator.boundingBox()));
-        const [cardBox, titleBox, cloudBox] = boxes;
+        const boxes = await Promise.all([card, title, details].map(locator => locator.boundingBox()));
+        const [cardBox, titleBox, detailsBox] = boxes;
         expect(titleBox.width).toBeCloseTo(cardBox.width - 20, 0);
         expect(titleBox.height).toBeGreaterThan(30);
-        expect(cloudBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
-        expect(cloudBox.x + cloudBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
-        expect(cloudBox.y + cloudBox.height).toBeLessThanOrEqual(cardBox.y + cardBox.height);
-        expect(cloudBox.width).toBeGreaterThanOrEqual(44);
-        expect(cloudBox.height).toBeGreaterThanOrEqual(44);
+        expect(detailsBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
+        expect(detailsBox.x + detailsBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
+        expect(detailsBox.y + detailsBox.height).toBeLessThanOrEqual(cardBox.y + cardBox.height);
         expect(await title.evaluate(element => element.scrollWidth <= element.clientWidth
           && element.scrollHeight <= element.clientHeight)).toBe(true);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -97,7 +96,7 @@ for (const [profile, options] of [
       const date = await card.locator('time').boundingBox();
       await page.mouse.click(date.x + date.width / 2, date.y + date.height / 2);
       await expect(page.getByRole('textbox', { name: 'Document title', exact: true })).toHaveValue(longTitle);
-      expect(accountOpens).toBe(0);
+      expect(accountOpens).toBe(1);
       await openDrawer();
       await expect(select).toHaveAttribute('aria-pressed', 'true');
       await expect(card).toHaveClass(/selected/);
@@ -106,14 +105,6 @@ for (const [profile, options] of [
       await page.keyboard.press('Shift+Tab');
       await expect(select).toBeFocused();
       expect(await select.evaluate(element => getComputedStyle(element, '::after').outlineStyle)).toBe('solid');
-      await page.keyboard.press('Tab');
-      await expect(cloud).toBeFocused();
-      const previousTitle = await page.getByRole('textbox', { name: 'Document title', exact: true }).elementHandle();
-      await page.keyboard.press('Enter');
-      await expect.poll(() => accountOpens).toBe(1);
-      await expect.poll(() => previousTitle.evaluate(element => element.isConnected)).toBe(false);
-      await expect(page.getByRole('textbox', { name: 'Document title', exact: true })).toHaveValue(longTitle);
-
       await openDrawer();
       const short = page.locator('.document-item').filter({ hasText: 'Short notes' });
       await short.focus();
