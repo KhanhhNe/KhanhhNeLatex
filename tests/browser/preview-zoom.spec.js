@@ -55,7 +55,13 @@ for (const [deviceScaleFactor, viewport] of [[1, { width: 1920, height: 1080 }],
     const page = await context.newPage();
     try {
       await preview(page);
-      await expect.poll(async () => (await pixelMapping(page)).transform).toBe('none');
+      // Wait for the settled render; a CI run once observed a transient zero-sized backing store.
+      const settled = state => state.transform === 'none' && state.canvases.length > 0 &&
+        state.canvases.every(canvas => canvas.width > 0 && canvas.width === Math.round(canvas.cssWidth));
+      await expect.poll(async () => {
+        const state = await pixelMapping(page);
+        return settled(state) || JSON.stringify(state);
+      }, { timeout: 10_000 }).toBe(true);
       const fitted = await pixelMapping(page);
       expect(fitted.dpr).toBe(deviceScaleFactor);
       expect(fitted.canvases.length).toBeGreaterThan(0);
