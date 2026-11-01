@@ -547,8 +547,8 @@
     },
     {
       "path": "/compiler/NOTICE.txt",
-      "size": 4590,
-      "sha256": "4e860787bc75f872cdada75ece6727abb13d2d167487f6d1b124e5850391c3d2"
+      "size": 4546,
+      "sha256": "4fedc51c363e60468b0aa1bb7d7adc73f312de721c10641878bb3351843f5e8f"
     },
     {
       "path": "/compiler/pgf-source.tar.gz",
