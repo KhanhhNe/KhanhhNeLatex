@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LatexCompiler } from '../src/compiler.js';
+import { createEngineWarmup } from '../src/engine-start.js';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 class WorkerStub {
@@ -95,4 +96,35 @@ test('native fonts and engine load concurrently and neither uses the compile bud
   worker.pdf();
   worker.pdf();
   assert.ok((await output).timings.initializationMs >= 50);
+});
+
+test('shared warmup records readiness and releases unused heaps on idle expiry', async () => {
+  const worker = new WorkerStub();
+  const warming = createEngineWarmup(() => worker, 500, 25);
+  const stale = worker.onmessage;
+  worker.send({ result: 'ok' });
+  await warming.promise;
+  assert.equal(warming.ready, true);
+  await wait(45);
+  assert.equal(warming.disposed, true);
+  assert.equal(worker.terminated, true);
+  stale({ data: { result: 'ok' } });
+  assert.equal(worker.onmessage, null);
+});
+
+test('failed warming is reported and subsequent warmup or compile can retry', async () => {
+  const workers = [];
+  const compiler = new LatexCompiler({ workerFactory: () => {
+    const worker = new WorkerStub(); workers.push(worker); return worker;
+  }, loadTimeout: 25 });
+  await assert.rejects(compiler.warmup(), /loading timed out/);
+  const warming = compiler.warmup();
+  workers[1].send({ result: 'failed' });
+  await assert.rejects(warming, /could not load/);
+  const output = compiler.compile('retry');
+  workers[2].send({ result: 'ok' });
+  workers[2].pdf();
+  workers[2].pdf();
+  await output;
+  assert.ok(workers.every(worker => worker.terminated));
 });
