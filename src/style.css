@@ -124,6 +124,15 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
 .modal h2{margin:8px 42px 20px 0;font-size:1.25rem;font-weight:600;line-height:1.4;letter-spacing:-.02em}
 .modal p{font-size:.875rem;line-height:1.75;color:#c2c2c2;margin:16px 0}
 .modal a{display:inline-flex;align-items:center;min-height:44px;font-size:.8125rem;color:#bad7e5;text-decoration:underline;text-underline-offset:3px}
+.modal h3{margin:24px 0 0;font-size:1rem;font-weight:600}
+.modal code{overflow-wrap:anywhere}
+.api-example{margin:0;padding:12px;border:1px solid #3a3a3a;border-radius:8px;background:#171717;color:#ddd;font:.75rem/1.6 ui-monospace,monospace;overflow-x:auto;white-space:pre}
+.api-example code{overflow-wrap:normal}
+.api-help{margin:12px 0;font-size:.8125rem;color:#c2c2c2}
+.api-help summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:#eee}
+.api-help dl{margin:0}
+.api-help dt{margin-top:12px;color:#eee}
+.api-help dd{margin:4px 0 0;line-height:1.6}
 .auth-modal{width:420px;padding:32px}
 .auth-modal .brand-mark{margin-bottom:20px}
 .auth-modal form{display:flex;flex-direction:column;gap:16px;margin-top:24px}

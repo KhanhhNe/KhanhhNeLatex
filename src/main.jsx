@@ -10,6 +10,7 @@ import PdfPreview from './components/PdfPreview.jsx';
 import useWorkspaceResize from './components/workspace-resize.js';
 import { mergeDocuments } from './document-list.js';
 import { documentPath, documentRoute, newDocumentCode, validDocumentCode } from './document-url.js';
+import { API_METHODS, createAgentApi } from './agent-api.js';
 import './style.css';
 
 const starter = String.raw`\documentclass[11pt]{article}
@@ -117,8 +118,35 @@ function App() {
   const account = useRef(null);
   const cloudRequest = useRef(0);
   account.current = user;
+  const editorApi = useRef(null);
+  const titleInput = useRef(null);
+  const lastError = useRef('');
+  const lastCompile = useRef(null);
+  const compileTask = useRef(null);
+  const engineMs = useRef(null);
+  const localSaveMs = useRef(null);
+  const renderWaiters = useRef([]);
+  const loaded = useRef(null);
+  if (!loaded.current) {
+    let resolve;
+    let remaining = 2; // device drafts and the account/cloud list check
+    loaded.current = { promise: new Promise(done => { resolve = done; }) };
+    loaded.current.resolve = () => { if (--remaining === 0) resolve(); };
+  }
+  const bridge = useRef(null);
+  const agent = useRef(null);
+  if (!agent.current) agent.current = createAgentApi(() => bridge.current);
+  const emit = (type, detail) => agent.current.emit(type, detail);
+  const emitPreview = viewer => emit('preview', {
+    request: viewer.request, pages: viewer.pages ?? null, bytes: viewer.bytes.byteLength, documentId: active.current?.id ?? null,
+  });
 
-  function notice(reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  function notice(reason) {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    lastError.current = message;
+    setError(message);
+    emit('error', { message });
+  }
   function showWorkspace(document = active.current, navigation = 'push') {
     if (!document) return;
     const path = documentPath(document);
@@ -163,6 +191,7 @@ function App() {
           setPdf(viewer);
           setPendingPdf(null);
           setStale(active.current.source !== viewer.source);
+          emitPreview(viewer);
         }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200);
       });
     });
@@ -181,11 +210,14 @@ function App() {
     if (document === active.current) clearTimeout(timer.current);
     if (persisted.current.has(document)) return;
     if (document === active.current) pending.current = true;
+    const started = performance.now();
     const work = saving.current.catch(() => {}).then(() => drafts.put(document));
     saving.current = work;
     try {
       await work;
+      localSaveMs.current = performance.now() - started;
       persisted.current.add(document);
+      emit('save', { documentId: document.id, local: true, cloud: false });
       if (active.current === document) {
         pending.current = false;
         setSaveState(savedLabel(document));
@@ -210,6 +242,7 @@ function App() {
     setSaveState('Saving on this device...');
     clearTimeout(timer.current);
     timer.current = setTimeout(() => { persist(next).catch(() => {}); }, 300);
+    emit('change', { documentId: next.id, title: next.title, length: next.source.length, fields: Object.keys(patch) });
     if ('source' in patch) {
       setStale(shownPdf.current?.source !== next.source);
       scheduleLive();
@@ -250,6 +283,7 @@ function App() {
       setPdf(null);
       setSidebar(false);
       setSaveState(persisted.current.has(document) ? savedLabel(document) : 'Saving on this device...');
+      emit('document', { id: document.id, cloudId: document.cloudId || null, title: document.title });
       compile({ reveal: false });
       await persist(document);
     } catch (reason) {
@@ -288,16 +322,17 @@ function App() {
       setDocuments(list.length ? list : [document]);
       setLocalReady(true);
       setSaveState('Saved on this device');
-    }).catch(reason => { notice(reason); setRouteError(reason.message); });
+      loaded.current.resolve();
+    }).catch(reason => { loaded.current.resolve(); notice(reason); setRouteError(reason.message); });
     api('/me').then(data => {
       if (!disposed) {
         account.current = data.user;
         setUser(data.user);
-        refreshCloud(data.user).catch(notice);
+        return refreshCloud(data.user).catch(notice);
       }
     }).catch(reason => {
       if (!reason.message.startsWith('Sign in') && !reason.message.startsWith('Session expired')) notice(reason);
-    }).finally(() => { if (!disposed) setAuthReady(true); });
+    }).finally(() => { if (!disposed) setAuthReady(true); loaded.current.resolve(); });
     const popstate = () => {
       selectionRequest.current++;
       setRouteVersion(version => version + 1);
@@ -382,6 +417,7 @@ function App() {
     if (view !== 'workspace') return;
     let disposed = false;
     compiler.current.warmup().then(timing => {
+      engineMs.current = timing.initializationMs;
       if (!disposed) setEngineState(`Engine initialized · ${elapsed(timing.initializationMs)}`);
     }).catch(reason => {
       if (!disposed && reason.message !== 'Compilation cancelled.') notice(reason);
@@ -414,12 +450,24 @@ function App() {
     setCompileState('Compilation cancelled.');
     setLog('');
   }
-  async function compile({ reveal = true } = {}) {
+  function compile(options) {
+    if (!active.current) return Promise.resolve(null);
+    const task = { source: active.current.source, pending: true };
+    task.promise = runCompile(options, task);
+    compileTask.current = task;
+    return task.promise;
+  }
+  function finishCompile(outcome) {
+    lastCompile.current = outcome;
+    emit('compile', agent.current.compileView(outcome));
+    return outcome;
+  }
+  async function runCompile({ reveal = true } = {}, task) {
     clearTimeout(liveTimer.current);
     discardPendingViewer();
-    if (!active.current) return;
     const snapshot = active.current;
     const run = ++compileRequest.current;
+    task.run = run;
     requestedSource.current = snapshot.source;
     setCompiling(true);
     setLog('');
@@ -428,12 +476,13 @@ function App() {
       const result = await compiler.current.compile(snapshot.source, status => {
         if (run === compileRequest.current && /^(Loading browser engine|Downloading|Typesetting|Resolving)/.test(status)) setCompileState(status);
       });
-      if (run !== compileRequest.current) return;
+      if (run !== compileRequest.current) return { superseded: true };
       const next = { bytes: result.pdf, title: snapshot.title, source: snapshot.source, request: run };
       generatedPdf.current = next;
       if (shownPdf.current && samePdf(shownPdf.current.bytes, result.pdf)) {
         shownPdf.current = { ...shownPdf.current, ...next };
         setPdf(shownPdf.current);
+        emitPreview(shownPdf.current);
       } else {
         next.url = URL.createObjectURL(new Blob([result.pdf], { type: 'application/pdf' }));
         if (!shownPdf.current) {
@@ -455,16 +504,31 @@ function App() {
       setStale(active.current.source !== shownPdf.current.source);
       setLog(result.log);
       setCompileState(`Compiled in your browser · ${elapsed(result.timings.compilationMs)}`);
-      if (result.timings.initializationMs > 0) setEngineState(`Engine initialized · ${elapsed(result.timings.initializationMs)}`);
+      if (result.timings.initializationMs > 0) {
+        engineMs.current = result.timings.initializationMs;
+        setEngineState(`Engine initialized · ${elapsed(result.timings.initializationMs)}`);
+      }
       if (reveal) setTab('preview');
+      return finishCompile({
+        ok: true, status: `Compiled in your browser · ${elapsed(result.timings.compilationMs)}`, log: result.log,
+        timings: result.timings, bytes: result.pdf.byteLength, source: snapshot.source, documentId: snapshot.id, request: run,
+      });
     } catch (reason) {
-      if (run !== compileRequest.current) return;
-      setCompileState(reason.message === 'Compilation cancelled.' ? reason.message
+      if (run !== compileRequest.current) return { superseded: true };
+      const status = reason.message === 'Compilation cancelled.' ? reason.message
         : reason.message.startsWith('LaTeX') ? 'LaTeX could not compile. See compilation log.'
           : reason.message.startsWith('Compilation timed out') ? 'Compilation timed out. See compilation log.'
-            : 'Compilation failed. See compilation log.');
+            : 'Compilation failed. See compilation log.';
+      setCompileState(status);
       setLog(reason.log || reason.message);
-    } finally { if (run === compileRequest.current) setCompiling(false); }
+      return finishCompile({
+        ok: false, cancelled: reason.message === 'Compilation cancelled.', status, error: reason.message,
+        log: reason.log || reason.message, source: snapshot.source, documentId: snapshot.id, request: run,
+      });
+    } finally {
+      task.pending = false;
+      if (run === compileRequest.current) setCompiling(false);
+    }
   }
   function scheduleCloud(document) {
     cloudSnapshots.current.set(document.id, document);
@@ -479,13 +543,19 @@ function App() {
     if (user && active.current?.dirty) scheduleCloud(active.current);
   }, [user]);
   async function sync({ snapshot = active.current, automatic = false } = {}) {
-    if (!snapshot) return;
+    if (!snapshot) return { ok: false, error: 'No document is open.' };
     const owner = account.current;
-    if (!owner) { if (!automatic) setAuth('login'); return; }
-    if (automatic && (snapshot.owner !== owner.id || !snapshot.cloudId)) return;
+    if (!owner) { if (!automatic) setAuth('login'); return { ok: false, error: 'Sign in to save to your account.' }; }
+    if (automatic && (snapshot.owner !== owner.id || !snapshot.cloudId)) return { ok: false, skipped: true };
     clearTimeout(cloudTimers.current.get(snapshot.id));
     cloudTimers.current.delete(snapshot.id);
-    if (cloudSaving.current) { cloudQueue.current.set(snapshot.id, { snapshot, automatic }); return; }
+    if (cloudSaving.current) {
+      return new Promise(resolve => {
+        const queued = cloudQueue.current.get(snapshot.id);
+        cloudQueue.current.set(snapshot.id, { snapshot, automatic, waiters: [...(queued?.waiters || []), resolve] });
+      });
+    }
+    let outcome;
     cloudSaving.current = true;
     cloudSnapshots.current.set(snapshot.id, snapshot);
     if (!automatic) setBusy(true);
@@ -507,7 +577,8 @@ function App() {
         if (!validDocumentCode(document.code)) throw new Error('The account response is missing a valid document permalink. Your device draft is kept.');
         saved = { ...snapshot, code: document.code, cloudId: document.id, revision: document.revision, owner: owner.id };
       }
-      cloudTimings.current.set(snapshot.id, performance.now() - started);
+      const roundTripMs = performance.now() - started;
+      cloudTimings.current.set(snapshot.id, roundTripMs);
       const latest = active.current?.id === snapshot.id ? active.current : cloudSnapshots.current.get(snapshot.id);
       const next = { ...latest, code: saved.code, cloudId: saved.cloudId, owner: owner.id, revision: saved.revision, dirty: latest !== snapshot };
       cloudSnapshots.current.set(next.id, next);
@@ -518,9 +589,12 @@ function App() {
       await persist(next);
       if (account.current?.id === owner.id) await refreshCloud();
       if (next.dirty && account.current?.id === owner.id) scheduleCloud(next);
+      outcome = { ok: true, documentId: next.id, cloudId: next.cloudId, revision: next.revision, roundTripMs, dirty: next.dirty };
+      emit('save', { ...outcome, local: true, cloud: true });
     } catch (reason) {
       notice(reason);
       if (localSaved && active.current?.id === snapshot.id) setSaveState('Cloud save failed - device draft kept');
+      outcome = { ok: false, documentId: snapshot.id, error: reason instanceof Error ? reason.message : String(reason) };
     }
     finally {
       cloudSaving.current = false;
@@ -530,27 +604,30 @@ function App() {
         const [id, request] = queued;
         cloudQueue.current.delete(id);
         const latest = cloudSnapshots.current.get(id) || request.snapshot;
-        if (latest.dirty) sync({ ...request, snapshot: latest });
+        const settle = result => { for (const waiter of request.waiters) waiter(result); };
+        if (latest.dirty) sync({ automatic: request.automatic, snapshot: latest }).then(settle);
+        else settle({ ok: true, documentId: latest.id, cloudId: latest.cloudId, revision: latest.revision, dirty: false });
       }
     }
+    return outcome;
   }
-  async function openCloud(item) {
+  async function openCloud(item, { agentRequest = false, replaceDraft = false } = {}) {
     const request = ++selectionRequest.current;
     try {
       const { document } = await api(`/documents/${item.id}`);
       if (request !== selectionRequest.current) return;
       const local = active.current?.cloudId === item.id && active.current.owner === user.id
         ? active.current : documents.find(doc => doc.cloudId === item.id && doc.owner === user.id);
-      if (local?.dirty && !window.confirm('Replace this device draft with the cloud version? Export the local draft first if you need it.')) return;
-      const next = { ...document,
-        id: local?.id || crypto.randomUUID(), updated_at: document.updated_at ?? Date.now(), cloudId: document.id, owner: user.id, dirty: false };
+      if (local?.dirty && !(agentRequest ? replaceDraft
+        : window.confirm('Replace this device draft with the cloud version? Export the local draft first if you need it.'))) return 'declined';
+      const next = { ...document, id: local?.id || crypto.randomUUID(), updated_at: document.updated_at ?? Date.now(), cloudId: document.id, owner: user.id, dirty: false };
       await select(next, true);
     } catch (reason) { notice(reason); }
   }
-  async function remove() {
-    if (cloudSaving.current) { notice(new Error('Wait for the account save to finish before deleting this document.')); return; }
+  async function remove({ confirmed = false } = {}) {
+    if (cloudSaving.current) { notice(new Error('Wait for the account save to finish before deleting this document.')); return false; }
     const snapshot = active.current;
-    if (!snapshot || !window.confirm(`Delete "${snapshot.title}"${snapshot.cloudId ? ' from this device and your account' : ''}? This cannot be undone.`)) return;
+    if (!snapshot || !(confirmed === true || window.confirm(`Delete "${snapshot.title}"${snapshot.cloudId ? ' from this device and your account' : ''}? This cannot be undone.`))) return false;
     clearTimeout(cloudTimers.current.get(snapshot.id));
     cloudTimers.current.delete(snapshot.id);
     cloudQueue.current.delete(snapshot.id);
@@ -570,7 +647,8 @@ function App() {
       active.current = null;
       setDocuments(list.length ? list : [next]);
       await select(next);
-    } catch (reason) { notice(reason); }
+      return true;
+    } catch (reason) { notice(reason); return false; }
     finally { setBusy(false); }
   }
   async function importFile(event) {
@@ -583,15 +661,93 @@ function App() {
   const actions = useRef({});
   actions.current = { compile, sync, modal: Boolean(auth || showHelp) };
   const unifiedDocuments = mergeDocuments(documents, cloud, user?.id);
-  function openDocument(document) {
-    if (!document.localAvailable) return openCloud(document.cloudItem);
+  function openDocument(document, options) {
+    if (!document.localAvailable) return openCloud(document.cloudItem, options);
     if (document.cloudItem && !document.dirty
       && Number(document.cloudItem.updated_at) > Number(document.localUpdatedAt)) {
-      return openCloud(document.cloudItem);
+      return openCloud(document.cloudItem, options);
     }
-    const { key, localAvailable, cloudAvailable, cloudItem, localUpdatedAt, ...draft } = document;
+    const { key, localAvailable, cloudAvailable, cloudItem, localUpdatedAt, current: _current, ...draft } = document;
     return select(draft);
   }
+  function applySource(next) {
+    const document = active.current;
+    if (!document) throw new Error('No document is open.');
+    if (next === document.source) return;
+    const handle = editorApi.current;
+    if (handle?.documentKey === `${document.id}:${generation.current}`) handle.replace(next);
+    if (active.current.source !== next) update({ source: next });
+  }
+  bridge.current = {
+    loaded: () => loaded.current.promise,
+    rendered: () => new Promise(resolve => { renderWaiters.current.push(resolve); setTimeout(resolve, 100); }),
+    active: () => active.current,
+    state: () => ({ view, tab, user, saveState, compileState, engineState, live, busy, error, log }),
+    documents: () => unifiedDocuments.map(item => ({ ...item, current: item.localAvailable && item.id === active.current?.id })),
+    open: async (item, { account: fromAccount, replaceDraft }) => {
+      lastError.current = '';
+      const { current: _current, ...document } = item;
+      const options = { agentRequest: true, replaceDraft };
+      const result = fromAccount ? await openCloud(document.cloudItem, options) : await openDocument(document, options);
+      if (result === 'declined') throw new Error('This device draft has changes not saved to your account. Save it first, or pass { replaceDraft: true }.');
+    },
+    create: (source, title) => { lastError.current = ''; return newDocument(source, title); },
+    rename: async title => {
+      update({ title });
+      if (titleInput.current) titleInput.current.value = title;
+      await persist();
+    },
+    remove: () => { lastError.current = ''; return remove({ confirmed: true }); },
+    applySource,
+    history: kind => {
+      const handle = editorApi.current;
+      if (!handle || handle.documentKey !== `${active.current.id}:${generation.current}`) throw new Error('The editor is still loading. Try again shortly.');
+      handle.history(kind);
+      return { length: active.current.source.length };
+    },
+    save: async () => {
+      await flush();
+      if (!account.current) return { ok: true, local: true, cloud: false, note: 'Not signed in: saved on this device only.' };
+      return { ...(await sync({ snapshot: active.current })), local: true, cloud: true };
+    },
+    compiling: () => Boolean(compileTask.current?.pending),
+    compile: () => compile({ reveal: false }),
+    compileTask: () => compileTask.current,
+    cancel: () => { if (compileTask.current?.pending) cancelCompile(); },
+    shownPdf: () => shownPdf.current,
+    latestPdf: () => generatedPdf.current,
+    timings: () => {
+      const round = value => typeof value === 'number' ? Math.round(value * 10) / 10 : null;
+      const timings = lastCompile.current?.timings;
+      return {
+        engineStartupMs: round(engineMs.current),
+        compile: timings ? { initializationMs: round(timings.initializationMs), compilationMs: round(timings.compilationMs), totalMs: round(timings.totalMs) } : null,
+        lastCompileOk: lastCompile.current ? lastCompile.current.ok : null,
+        localSaveMs: round(localSaveMs.current),
+        accountSaveRoundTripMs: round(cloudTimings.current.get(active.current?.id)),
+      };
+    },
+    download,
+    show: panel => {
+      if (panel === 'projects') { showProjects(); return; }
+      if (view !== 'workspace') showWorkspace();
+      if (panel === 'source' || panel === 'preview') setTab(panel);
+    },
+    setLive: toggleLive,
+    lastError: () => lastError.current,
+  };
+  useEffect(() => {
+    if (!renderWaiters.current.length) return;
+    const waiters = renderWaiters.current;
+    renderWaiters.current = [];
+    for (const resolve of waiters) resolve();
+  });
+  useEffect(() => {
+    const { api: latex } = agent.current;
+    window.latex = latex;
+    console.info('KhanhhNeLatex page API ready: call latex.help()');
+    return () => { if (window.latex === latex) delete window.latex; };
+  }, []);
   useEffect(() => {
     const keys = event => {
       if (actions.current.modal) return;
@@ -665,7 +821,7 @@ function App() {
           <div className="document-title"><span className="breadcrumb">Projects <span aria-hidden="true">/</span></span>
             <span className="document-title-field">
               <span className="document-title-measure" aria-hidden="true">{`${current?.title || ''} `}</span>
-              <input key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy}
+              <input ref={titleInput} key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy}
                 onChange={event => update({ title: event.target.value })} onBlur={event => {
                   if (!active.current?.title.trim()) { event.target.value = 'Untitled paper'; update({ title: 'Untitled paper' }); }
                   persist().catch(() => {});
@@ -686,7 +842,7 @@ function App() {
             </div>
             <div className="editor-container">
               <LatexEditor documentKey={`${current?.id || 'loading'}:${generation.current}`}
-                value={current?.source || ''} loading={!current}
+                value={current?.source || ''} loading={!current} apiRef={editorApi}
                 onChange={source => update({ source })}
                 onSave={() => compile()} onCompile={() => compile()} />
             </div>
@@ -717,7 +873,11 @@ function App() {
                   discardPendingViewer();
                   notice(new Error('The new PDF preview could not load. The previous preview is still available; export the new PDF or compile again.'));
                 }}
-                onReady={() => revealPreview(viewer.url)} />)}</div> :
+                onReady={info => {
+                  for (const item of [viewer, shownPdf.current, pendingViewer.current]) if (item?.url === viewer.url && info?.pages) item.pages = info.pages;
+                  if (shownPdf.current?.url === viewer.url) emitPreview(shownPdf.current);
+                  revealPreview(viewer.url);
+                }} />)}</div> :
               <div className="empty-preview"><Icon name="file" />
                 <h1>{compiling ? 'Preparing preview' : 'PDF preview'}</h1><p>{compiling ? 'Typesetting your document…' : 'Compile to see your document here.'}</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}><Icon name="refresh" />Compile your document</button></div>}
             </div>
@@ -778,6 +938,18 @@ function HelpDialog({ onClose }) {
         <p>The engine starts loading when you enter the workspace, and each opened document gets an initial preview. Enable Live preview for debounced updates after editing pauses; it starts off to avoid background CPU churn. Your choice is saved on this device. Compile manually with <kbd>Ctrl</kbd> + <kbd>Enter</kbd>. Two passes resolve cross-references. A new compile replaces the previous job; Cancel stops it immediately, and jobs time out after 60 seconds.</p>
         <p>Drafts save automatically on this device after a short pause. Use Save to account once to link a draft; subsequent edits save automatically after an 800 ms pause while signed in as its owner. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>S</kbd> only forces a fresh compilation, even when source is unchanged. Cloud failures keep your device draft. Compilation timings measure typesetting, engine startup is shown separately, and cloud-save timings measure the full request round trip, not just database work. Export .tex for a portable backup. Device drafts are not encrypted; use your own device.</p>
         <p>First compilation fetches the pinned local engine and required bundled packages. Native-font compilation adds a 22.79 MB format, 3.07 MB XeTeX engine and 0.70 MB PDF converter on demand, plus fonts/packages. Browser caching can avoid repeat transfers. Active compilation can use more than 100 MB; XeTeX and the converter run sequentially and their workers are released after each job. Manual compilation keeps background CPU use low.</p>
+        <h3 id="api-help-title">JavaScript API for agents</h3>
+        <p>Scripts and AI agents can drive this page without screen scraping. In the browser console, call <code>latex.help()</code>. Methods use the same actions as the buttons, return plain data and Promises that settle when the action finishes, and never expose credentials. Account saves still require you to be signed in as the owner.</p>
+        <pre className="api-example" aria-labelledby="api-help-title"><code>{`await latex.ready();
+latex.list();                      // documents
+await latex.open('Alpha paper');   // id, cloudId or title
+latex.read({ from: 1, to: 10 });
+latex.replace('Old', 'New', { all: true });
+await latex.save();
+const result = await latex.compile();
+result.errors; latex.log(); latex.timings();`}</code></pre>
+        <details className="api-help"><summary>All {API_METHODS.length} methods</summary><dl>{API_METHODS.map(method =>
+          <div key={method.signature}><dt><code>latex.{method.signature}</code></dt><dd>{method.description} <code>{method.example}</code></dd></div>)}</dl></details>
         <a href="/compiler/NOTICE.txt" target="_blank" rel="noreferrer">Compiler credits and source ↗</a>
       </section>
     </div>;
