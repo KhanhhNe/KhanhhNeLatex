@@ -63,7 +63,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
         .slice(0, maxPages).map(page => page.index);
     };
     const rasterize = async () => {
-      if (disposed || failed || !document || gesture || pointers.size > 1 || rendering) return;
+      if (disposed || failed || !document || (gesture && !gesture.pan) || pointers.size > 1 || rendering) return;
       rendering = true;
       const run = generation, wanted = visible();
       // Keep only viewport pages; no full-document canvas stack or per-event PDF work.
@@ -117,7 +117,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
     const schedule = () => {
       if (failed || disposed) return;
       clearTimeout(timer);
-      timer = setTimeout(rasterize, settleDelay);
+      timer = setTimeout(() => { timer = 0; rasterize(); }, settleDelay);
     };
     const changeZoom = (next, x = scroller.clientWidth / 2, y = scroller.clientHeight / 2) => {
       next = clamp(next, .25, 4);
@@ -239,7 +239,12 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       if (event.key === '0') fit();
       else changeZoom(zoom * (event.key === '-' ? 1 / 1.2 : 1.2));
     };
-    const scroll = () => { remember(); schedule(); };
+    const scroll = () => {
+      remember();
+      if (failed || disposed || (gesture && !gesture.pan) || pointers.size > 1 || timer) return;
+      // Scroll is throttled, not debounced: newly visible pages fill during a long pan.
+      timer = setTimeout(() => { timer = 0; rasterize(); }, settleDelay);
+    };
     const loaded = () => handlers.current.onReady();
     container.addEventListener('load', loaded);
     scroller.addEventListener('wheel', wheel, { passive: false });

@@ -132,6 +132,16 @@ test('multi-page scrolling and high zoom bound canvas memory; switching terminat
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await expect(page.locator('.pdf-page')).toHaveCount(12);
   await expect(page.locator('.pdf-viewer.pending')).toHaveCount(0);
+  const filledWhileScrolling = await page.locator('.pdf-viewport').evaluate(async view => {
+    let filled = false;
+    for (let index = 0; index < 60; index++) {
+      view.scrollTop += 20;
+      await new Promise(requestAnimationFrame);
+      filled ||= Boolean(view.querySelector('.pdf-page:not(:first-child) canvas'));
+    }
+    return filled;
+  });
+  expect(filledWhileScrolling).toBe(true);
   for (let index = 0; index < 15; index++) await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await expect(page.locator('.pdf-viewer output')).toHaveText('400%');
   await page.locator('.pdf-viewport').evaluate(view => { view.scrollTop = view.scrollHeight; });
