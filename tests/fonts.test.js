@@ -121,8 +121,9 @@ test('bounded unconditional literal macros resolve before use, including style n
 });
 
 test('native converter resolves bundled absolute OTF paths only through its static manifest', async () => {
-  const self = { location: { href: 'https://app.test/compiler/dvipdf-worker.js' }, postMessage() {} };
-  const scope = { self, URL, importScripts() {} };
+  const self = { location: { href: 'https://app.test/compiler/dvipdf-worker.js?v=fontspec-2', search: '?v=fontspec-2' }, postMessage() {} };
+  const imports = [];
+  const scope = { self, URL, importScripts: url => imports.push(url) };
   runInNewContext(await readFile(new URL('../public/compiler/native-manifest.js', import.meta.url), 'utf8'), scope);
   const requests = [];
   self.XMLHttpRequest = class {
@@ -130,6 +131,7 @@ test('native converter resolves bundled absolute OTF paths only through its stat
     send() { this.status = 200; }
   };
   runInNewContext(await readFile(new URL('../public/compiler/native-package-loader.js', import.meta.url), 'utf8'), scope);
+  assert.deepEqual(imports, ['/compiler/native-manifest.js?v=fontspec-2']);
   const xhr = new self.XMLHttpRequest();
   xhr.open('GET', 'https://texlive.texlyre.org/xetex/47//tex/lmroman10-regular.otf');
   xhr.send();
@@ -141,6 +143,21 @@ test('native converter resolves bundled absolute OTF paths only through its stat
   assert.equal(xhr.status, 301);
   assert.equal(xhr.response, undefined);
   assert.equal(requests.length, 1);
+  for (const engine of ['xetex', 'dvipdf']) {
+    imports.length = 0;
+    runInNewContext(await readFile(new URL(`../public/compiler/${engine}-worker.js`, import.meta.url), 'utf8'), scope);
+    assert.equal(imports[0], '/compiler/native-package-loader.js?v=fontspec-2');
+  }
+  const children = [];
+  scope.Worker = class {
+    constructor(url) { this.url = url; children.push(this); }
+    terminate() {}
+  };
+  runInNewContext(await readFile(new URL('../public/compiler/native-worker.js', import.meta.url), 'utf8'), scope);
+  for (let pass = 0; pass < 2; pass++) children[0].onmessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(1) } });
+  assert.deepEqual(children.map(child => child.url), [
+    '/compiler/xetex-worker.js?v=fontspec-2', '/compiler/dvipdf-worker.js?v=fontspec-2',
+  ]);
 });
 
 test('font URL constraints reject credentials, redirects, paths, queries and non-TTF formats', () => {

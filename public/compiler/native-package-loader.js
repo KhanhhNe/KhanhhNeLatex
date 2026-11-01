@@ -1,4 +1,4 @@
-importScripts('/compiler/native-manifest.js');
+importScripts(`/compiler/native-manifest.js${self.location.search}`);
 const NativeXHR = self.XMLHttpRequest;
 class NativePackageXHR {
   open(method, url) {

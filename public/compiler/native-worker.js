@@ -1,5 +1,5 @@
 /* Run XeTeX and its PDF converter sequentially, never keeping both WASM heaps alive. */
-let child = new Worker('/compiler/xetex-worker.js');
+let child = new Worker(`/compiler/xetex-worker.js${self.location.search}`);
 const fonts = [];
 let passes = 0;
 let texLog = '';
@@ -17,7 +17,7 @@ child.onmessage = ({ data }) => {
     texLog = data.log || '';
     const xdv = data.pdf;
     child.terminate();
-    child = new Worker('/compiler/dvipdf-worker.js');
+    child = new Worker(`/compiler/dvipdf-worker.js${self.location.search}`);
     errors();
     child.onmessage = ({ data: converted }) => {
       if (!converted.cmd && converted.result === 'ok') {
