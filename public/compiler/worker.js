@@ -1,12 +1,11 @@
 /* SwiftLaTeX runtime is AGPL-3.0; see /compiler/NOTICE.txt and project LICENSE. */
 importScripts(`/compiler/manifest.js${self.location.search}`, `/compiler/format-assets.js${self.location.search}`);
 const post = self.postMessage.bind(self);
-const format = fetch(self.TEX_FORMAT_ASSETS.pdftex).then(async response => {
-  if (!response.ok) throw new Error('The browser engine format could not load.');
-  return new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
-});
 let formatBytes;
-const prepared = format.then(bytes => { formatBytes = bytes; });
+const prepared = fetch(self.TEX_FORMAT_ASSETS.pdftex).then(async response => {
+  if (!response.ok) throw new Error('The browser engine format could not load.');
+  formatBytes = await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+});
 prepared.catch(error => post({ result: 'failed', log: error.message }));
 self.postMessage = (data, ...rest) => {
   if (!data.cmd && data.result === 'ok') {
