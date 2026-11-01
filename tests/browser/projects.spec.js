@@ -35,15 +35,15 @@ test('Projects dashboard searches, sorts, switches views and opens a persistent 
 });
 
 test('local and account documents share one newest-first list with location icons', async ({ page }) => {
-  const cloudOnly = { id: 'cloud-only', title: 'Cloud only', updated_at: Date.now() + 120000 };
+  const cloudOnly = { id: 'cloud-only', code: 'Cloud123', title: 'Cloud only', updated_at: Date.now() + 120000 };
   let shared;
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', async route => {
     if (route.request().method() === 'GET') {
       return route.fulfill({ json: { documents: [cloudOnly, ...(shared ? [shared] : [])] } });
     }
-    shared = { id: 'shared-cloud', title: 'Shared paper', updated_at: Date.now() + 60000 };
-    return route.fulfill({ json: { document: { id: shared.id, revision: 1 } } });
+    shared = { id: 'shared-cloud', code: route.request().postDataJSON().code, title: 'Shared paper', updated_at: Date.now() + 60000 };
+    return route.fulfill({ json: { document: { id: shared.id, code: shared.code, revision: 1 } } });
   });
   await page.goto('/');
   const projects = page.getByRole('list', { name: 'Projects' });

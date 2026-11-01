@@ -45,6 +45,9 @@ for (const browserType of [chromium, webkit]) {
         await editorReady(page);
         await expect(page.getByRole('button', { name: 'Compile', exact: true })).toHaveText('Compile & read');
         await expect(page.getByRole('button', { name: 'Save to account' })).toBeVisible();
+        await page.getByRole('textbox', { name: 'Document title' }).fill('Mobile reading review');
+        await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(page).toHaveURL(/\/documents\/mobile-reading-review\/[A-Za-z0-9_-]{8}$/);
         const editor = await page.locator('.monaco-editor').elementHandle();
         await page.getByRole('button', { name: 'Read', exact: true }).click();
         expect(await pdf.evaluate(element => element.isConnected)).toBe(true);

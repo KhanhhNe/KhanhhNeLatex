@@ -155,7 +155,7 @@ test('cloud autosave is debounced while Ctrl/Cmd+S only recompiles even unchange
     if (route.request().method() === 'GET') return route.fulfill({ json: { documents: [] } });
     saves++;
     await new Promise(resolve => setTimeout(resolve, 60));
-    await route.fulfill({ json: { document: { id: 'saved-cloud', revision: saves } } });
+    await route.fulfill({ json: { document: { id: 'saved-cloud', code: route.request().postDataJSON().code, revision: saves } } });
   });
   await page.route('**/api/documents/saved-cloud', async route => {
     if (fail) return route.fulfill({ status: 503, json: { error: 'Cloud save unavailable' } });
@@ -198,7 +198,7 @@ test('cloud autosave coalesces in-flight edits and carries the latest server rev
   let concurrent = 0, maximum = 0;
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', route => route.fulfill({ json: route.request().method() === 'GET'
-    ? { documents: [] } : { document: { id: 'coalesced-cloud', revision: 1 } } }));
+    ? { documents: [] } : { document: { id: 'coalesced-cloud', code: route.request().postDataJSON().code, revision: 1 } } }));
   await page.route('**/api/documents/coalesced-cloud', async route => {
     const body = route.request().postDataJSON();
     updates.push(body);
@@ -543,7 +543,7 @@ test('long account names retain an explicit mobile sign-out action without overf
 });
 
 test('reopening a linked cloud draft replaces visible inputs and persists the fetched text', async ({ page }) => {
-  let cloud = { id: 'cloud-document', title: 'Cloud title', source: 'original cloud text', revision: 1 };
+  let cloud = { id: 'cloud-document', code: 'Cloud123', title: 'Cloud title', source: 'original cloud text', revision: 1 };
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', route => route.fulfill({ json: { documents: [cloud] } }));
   await page.route('**/api/documents/cloud-document', route => route.fulfill({ json: { document: cloud } }));
