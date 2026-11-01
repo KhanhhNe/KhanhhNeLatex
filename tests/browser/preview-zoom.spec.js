@@ -22,7 +22,7 @@ async function preview(page) {
     };
   });
   await page.goto('/#workspace');
-  const tab = page.getByRole('button', { name: 'PDF preview', exact: true });
+  const tab = page.getByRole('button', { name: 'Read', exact: true });
   if (await tab.isVisible()) await tab.click();
   await expect(page.locator('.pdf-viewer canvas').first()).toBeVisible();
   await expect(page.locator('.pdf-viewer.pending')).toHaveCount(0);
@@ -165,14 +165,14 @@ test('hidden mobile preview can finish a replacement without losing zoom or timi
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await expect(page.locator('.pdf-viewer output')).not.toHaveText(initialZoom);
   const zoom = await page.locator('.pdf-viewer output').textContent();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Live preview', exact: true }).check();
-  await page.getByRole('button', { name: 'Source', exact: true }).click();
   await fillSource(page, String.raw`\documentclass{article}\begin{document}Replacement PDF.\end{document}`);
   // Live compilation is intentionally allowed to complete while Source stays active.
   await expect(page.locator('.pdf-viewer[title="Compiled PDF"]')).not.toHaveAttribute('data-src', initialUrl);
   await expect(page.locator('.pdf-viewer.pending')).toHaveCount(0);
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
-  await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   await expect(page.locator('.pdf-viewer output')).toHaveText(zoom);
   await expect(page.locator('.pdf-viewer canvas')).toBeVisible();
   await expect(page.locator('.pdf-render-error')).toHaveCount(0);

@@ -73,7 +73,9 @@ function App() {
   const [pdf, setPdf] = useState(null);
   const [pendingPdf, setPendingPdf] = useState(null);
   const [stale, setStale] = useState(false);
-  const [tab, setTab] = useState('source');
+  const [mobile, setMobile] = useState(() => matchMedia('(max-width: 1050px)').matches);
+  const [tab, setTab] = useState('preview');
+  const [editorOpened, setEditorOpened] = useState(false);
   const [sidebar, setSidebar] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [live, setLive] = useState(false);
@@ -110,9 +112,20 @@ function App() {
   account.current = user;
 
   function notice(reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  useEffect(() => {
+    const query = matchMedia('(max-width: 1050px)');
+    const changed = () => {
+      setMobile(query.matches);
+      setEditorOpened(true);
+      if (query.matches) setTab('preview');
+    };
+    query.addEventListener('change', changed);
+    return () => query.removeEventListener('change', changed);
+  }, []);
   function showWorkspace() {
     history.replaceState(null, '', '#workspace');
     setView('workspace');
+    setTab('preview');
   }
   function showProjects() {
     history.replaceState(null, '', location.pathname + location.search);
@@ -216,6 +229,7 @@ function App() {
       compiler.current.cancel();
       setCompiling(false);
       generation.current++;
+      setEditorOpened(false);
       active.current = document;
       setCurrent(document);
       if (document.dirty) scheduleCloud(document);
@@ -526,7 +540,7 @@ function App() {
     {view === 'projects' ? <ProjectsView documents={unifiedDocuments} onOpen={openDocument}
       onOpenCloud={openCloud} onNew={() => newDocument()}
       onImport={() => fileInput.current.click()} username={user?.username}
-      onSignIn={() => user ? showWorkspace() : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className="workspace-view">
+      onSignIn={() => user ? showWorkspace() : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className={`workspace-view ${tab === 'source' ? 'editing' : 'reading'}`}>
     <header className="topbar">
       <button className="icon projects-back" aria-label="Your projects" title="Your projects" onClick={showProjects}><Icon name="back" /></button>
       <button className="icon mobile-menu" aria-label="Toggle documents" title="Toggle documents" aria-expanded={sidebar} aria-controls="document-sidebar" onClick={() => setSidebar(!sidebar)}><Icon name="panel" /></button>
@@ -572,7 +586,7 @@ function App() {
       <main className="main">
         <div className="document-toolbar">
           <div className="document-title"><span className="breadcrumb">Projects <span aria-hidden="true">/</span></span>
-            <input key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy}
+            <input key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy} readOnly={mobile && tab === 'preview'}
               onChange={event => update({ title: event.target.value })} onBlur={event => {
                 if (!active.current?.title.trim()) { event.target.value = 'Untitled paper'; update({ title: 'Untitled paper' }); }
                 persist().catch(() => {});
@@ -584,19 +598,24 @@ function App() {
             <button className="save-button" disabled={!current || busy} onClick={sync}>{busy ? 'Saving...' : 'Save to account'}</button>
           </div>
         </div>
-        <div className="mobile-tabs"><button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => setTab('source')}>Source</button><button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>PDF preview</button></div>
+        <div className="mobile-tabs" role="group" aria-label="Document mode">
+          <button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>Read</button>
+          <button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => { setEditorOpened(true); setTab('source'); }}>Edit</button>
+        </div>
         <div className="panels" ref={sizing.panels}>
           <section id="source-panel" className={`editor-panel ${tab === 'source' ? 'mobile-active' : ''}`} aria-label="LaTeX source editor">
             <div className="panel-toolbar source-toolbar"><span className="source-file-tab"><Icon name="file" />main.tex</span><span className="tiny">LaTeX</span>
-              <button className="compile-button source-compile" aria-label={compiling ? 'Cancel' : 'Compile'} disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>{compiling ? 'Cancel' : 'Compile'}</button>
+              <button className="compile-button source-compile" aria-label={compiling ? 'Cancel' : 'Compile'} disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>{compiling ? 'Cancel' : 'Compile & read'}</button>
             </div>
             <div className="editor-container">
-              <LatexEditor documentKey={`${current?.id || 'loading'}:${generation.current}`}
+              {(!mobile || editorOpened) && <LatexEditor documentKey={`${current?.id || 'loading'}:${generation.current}`}
                 value={current?.source || ''} loading={!current}
                 onChange={source => update({ source })}
-                onSave={() => compile()} onCompile={() => compile()} />
+                onSave={() => compile()} onCompile={() => compile()} />}
             </div>
-            <div className="editor-footer"><span>LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>
+            <div className="editor-footer"><span>LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span>
+              {mobile && <label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label>}
+            </div>
           </section>
           <div ref={sizing.splitHandle} className="pane-separator" role="separator" tabIndex={0}
             aria-label="Source editor width" aria-orientation="vertical" aria-controls="source-panel"
@@ -606,6 +625,7 @@ function App() {
               <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>
                 {compiling ? <span className="spinner" /> : <Icon name="refresh" />}{compiling ? 'Cancel' : 'Compile'}
               </button><span className="preview-title">PDF preview</span>
+              <button className="quiet mobile-source-export" disabled={!current} onClick={() => download(active.current.source, `${active.current.title || 'document'}.tex`, 'text/plain;charset=utf-8')}><Icon name="download" />Export .tex</button>
               <button className="quiet" disabled={!pdf} onClick={() => {
                 const latest = generatedPdf.current;
                 download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
@@ -628,7 +648,7 @@ function App() {
                 <h1>{compiling ? 'Preparing preview' : 'PDF preview'}</h1><p>{compiling ? 'Typesetting your document…' : 'Compile to see your document here.'}</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}><Icon name="refresh" />Compile your document</button></div>}
             </div>
             <div className="compile-log-slot"><details className="compile-log" open={compileState.includes('See compilation log.')}><summary>Compilation log</summary><pre>{log || 'No compilation log available.'}</pre></details></div>
-            <div className="preview-footer"><span title={engineState}>{engineState}</span><label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label><button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>
+            <div className="preview-footer"><span title={engineState}>{engineState}</span>{!mobile && <label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label>}<button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>
           </section>
         </div>
       </main>
@@ -677,6 +697,7 @@ function HelpDialog({ onClose }) {
   return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
       <section ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="help-title"><button className="modal-close" aria-label="Close help" onClick={onClose}><Icon name="close" /></button>
         <h2 id="help-title">Workspace help</h2>
+        <p>On mobile, documents open in Read mode. Export PDF or Export .tex while reading; Open PDF uses your browser's native viewer for text selection, search and accessibility. Switch to Edit for small source or title changes and account saving. Compile &amp; read returns to the PDF after a successful compile; failed or cancelled compilations keep the last good preview. Live preview is available in Edit. The enhanced editor loads only when needed.</p>
         <p>Each document is one UTF-8 .tex file, up to 100,000 characters. Images, binary files and external source assets are not supported.</p>
         <p>The default bundled pdfTeX engine supports article, report, book, amsmath, amssymb, geometry and standard Computer Modern fonts. No shell escape, bibliography uploads, font uploads, or automatic package downloads. Full Unicode and every CTAN package are not supported.</p>
         <p>For Google Fonts, use <code>{String.raw`\usepackage{fontspec}\setmainfont[BoldFont={Roboto Bold}]{Roboto}`}</code> and <code>{String.raw`\newfontfamily\crimson{Crimson Pro}`}</code> (then <code>{String.raw`{\crimson Your text}`}</code>). Generic Google names and simple top-level literal font-name macros work. Options may precede or follow the family: UprightFont, BoldFont, ItalicFont, BoldItalicFont, and documented safe features such as Scale, Ligatures, Numbers and LetterSpace. Weight suffixes Thin through Black and Italic are supported. Conventional virtual filenames such as Roboto-Regular.ttf or CrimsonPro-Regular.ttf may use literal Path=fonts/; these resolve Google family/style names, not local files or guaranteed historical font versions. RawFeature supports signed kern, liga and clig switches. Other paths, URLs, computed/local/conditional macros and unlisted options are rejected. Native compilation includes basic xcolor/TikZ drawing and Hyperref support, not arbitrary optional libraries. See README for exact feature values and parser limits.</p>

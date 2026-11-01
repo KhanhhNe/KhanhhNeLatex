@@ -3,6 +3,9 @@ import { expect } from '@playwright/test';
 export const sourceEditor = page => page.getByRole('textbox', { name: 'LaTeX source', exact: true });
 
 export async function editorReady(page) {
+  const edit = page.getByRole('button', { name: 'Edit', exact: true });
+  if (await edit.isVisible() && await edit.getAttribute('aria-pressed') !== 'true')
+    await edit.click();
   await expect(page.locator('.latex-editor-host')).toBeVisible();
   await expect(sourceEditor(page)).toBeEnabled();
 }

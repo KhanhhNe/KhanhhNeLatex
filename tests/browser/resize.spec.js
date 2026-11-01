@@ -177,6 +177,7 @@ test('stale widths, scaled desktop and narrow-screen tabs remain bounded without
   expect(await value(split(page))).toBe(320);
   for (const [w, h] of [[1920, 1080], [1366, 768], [960, 768], [390, 844], [844, 390]]) {
     await page.setViewportSize({ width: w, height: h });
+    await editorReady(page);
     await aligned(page);
     if (w > 1050) {
       await expect(sidebar(page)).toBeVisible();
@@ -188,11 +189,11 @@ test('stale widths, scaled desktop and narrow-screen tabs remain bounded without
       await evidence(page, `resize-${w}-source`);
     } else {
       await expect(page.getByRole('separator')).toHaveCount(0);
-      await expect(page.getByRole('button', { name: 'Source', exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Read', exact: true }).click();
       await expect(page.locator('#preview-panel')).toBeVisible();
       await evidence(page, `resize-${w}-preview`);
-      await page.getByRole('button', { name: 'Source', exact: true }).click();
+      await page.getByRole('button', { name: 'Edit', exact: true }).click();
       await page.getByRole('button', { name: 'Toggle documents' }).click();
       await expect(page.locator('#document-sidebar')).toBeVisible();
       await page.getByRole('button', { name: 'Toggle documents' }).click();

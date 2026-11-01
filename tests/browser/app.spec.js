@@ -73,9 +73,10 @@ test('invalid input, cancellation, document selection and mobile layout behave s
   await page.getByRole('navigation', { name: 'Documents' }).getByRole('button').first().click();
   await expectSource(page, 'latest unsaved change');
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(editor).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
-  await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   await expect(page.getByRole('region', { name: 'PDF preview' })).toBeVisible();
 });
 
