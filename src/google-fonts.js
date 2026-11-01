@@ -48,6 +48,13 @@ function group(text, start, open, close) {
 
 export function fontFace(name) {
   const family = name.trim().replace(/\s+/g, ' ');
+  const filename = family.match(/^([A-Z][a-z]+(?:[A-Z][a-z]+)*)-(Regular|Bold|Italic|BoldItalic)\.ttf$/);
+  if (filename && family.length <= 80) {
+    const resolved = filename[1].replace(/([a-z])([A-Z])/g, '$1 $2');
+    const weight = filename[2].startsWith('Bold') ? 700 : 400;
+    const italic = filename[2].endsWith('Italic');
+    return { family: resolved, weight, italic, key: `${resolved.toLowerCase()}:${weight}:${Number(italic)}`, virtualFile: family };
+  }
   if (!validFamily(family)) throw new Error('Font names must resolve to literal Google Fonts family names (letters, digits, spaces or hyphens; at most 80 characters). URLs, paths and computed TeX names are not supported.');
   return { family, weight: 400, italic: false, key: `${family.toLowerCase()}:400:0` };
 }
@@ -114,6 +121,7 @@ function fontOptions(options, resolve, faces) {
     Language: /^[A-Za-z ]{1,48}$/,
     Renderer: /^(?:OpenType|ICU)$/,
     Mapping: /^tex-text$/,
+    RawFeature: /^[+-](?:kern|liga|clig)(?:\s*,\s*[+-](?:kern|liga|clig))*$/,
   };
   for (const option of options.split(/,(?![^{}]*\})/).filter(option => option.trim())) {
     const match = option.trim().match(/^([A-Za-z]+)\s*=\s*(?:\{([^{}]*)\}|([^{}]*))$/);
@@ -123,6 +131,9 @@ function fontOptions(options, resolve, faces) {
     if (['UprightFont', 'BoldFont', 'ItalicFont', 'BoldItalicFont'].includes(key) && faces) {
       if (!value && key !== 'UprightFont') faces[key] = null;
       else faces[key] = fontFace(resolve(value));
+    } else if (key === 'Path' && faces?.UprightFont.virtualFile && value === 'fonts/') {
+      // This is a virtual filename namespace, never a filesystem or network path.
+      continue;
     } else {
       if (!choices[key]?.test(value) ||
           (key === 'Scale' && !value.startsWith('Match') && !(Number(value) >= 0.1 && Number(value) <= 10)) ||
@@ -290,9 +301,10 @@ export class GoogleFontLoader {
     const styled = (face, weight, italic) => ({ family: face.family, weight, italic, key: `${face.family.toLowerCase()}:${weight}:${Number(italic)}` });
     for (const declaration of declarations) {
       const upright = declaration.faces.UprightFont;
+      if (upright.virtualFile) onStatus(`Resolving virtual ${upright.virtualFile} from Google Fonts; original binary/version is not available.`);
       if (bold && declaration.faces.BoldFont === undefined)
-        declaration.faces.BoldFont = styled(upright, 700, false);
-      if (italic && declaration.faces.ItalicFont === undefined) declaration.faces.ItalicFont = styled(upright, 400, true);
+        declaration.faces.BoldFont = styled(upright, 700, upright.italic);
+      if (italic && declaration.faces.ItalicFont === undefined) declaration.faces.ItalicFont = styled(upright, upright.weight, true);
       if (bold && italic && declaration.faces.BoldItalicFont === undefined) declaration.faces.BoldItalicFont = styled(upright, 700, true);
       for (const face of Object.values(declaration.faces)) if (face && !faces.has(face.key)) faces.set(face.key, face);
     }

@@ -6,7 +6,7 @@
   "license": "AGPL-3.0-only",
   "files": [
     "src", "server", "scripts", "migrations", "tests", ".github", "AGENTS.md",
-    "public/compiler", "public/_headers",
+    "public/compiler", "!public/compiler/xcolor-source.tar.gz", "!public/compiler/pgf-source.tar.gz", "public/_headers",
     "index.html", "vite.config.js", "playwright.config.js",
     "cloudflare.config.ts", "wrangler.config.ts", "wrangler.jsonc",
     "drizzle.config.js", ".env.example", ".gitignore",
