@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "npm run source:bundle && node scripts/asset-hashes.mjs && vite build",
+    "build": "node scripts/asset-hashes.mjs && npm run source:bundle && vite build",
     "preview": "wrangler dev --ip 127.0.0.1 --port 8787",
     "dev:worktree": "node scripts/dev-worktree.mjs",
     "db:local": "wrangler d1 migrations apply DB --local",

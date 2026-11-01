@@ -7,8 +7,8 @@
     },
     {
       "path": "/compiler/dvipdf-worker.js",
-      "size": 243,
-      "sha256": "29dbe3ab091bf9cd3823591526f23ed785c439830b53e72d1c0dc18621644520"
+      "size": 239,
+      "sha256": "46d0aa2ef70e452f319a40cf53a0f497e770589cec891a413c1f1136845618fa"
     },
     {
       "path": "/compiler/manifest.js",
@@ -22,8 +22,8 @@
     },
     {
       "path": "/compiler/native-package-loader.js",
-      "size": 859,
-      "sha256": "3b04da0a24bd3e309dfb5a849b10679abe08e16c99fccbe592e69a669ece0c57"
+      "size": 836,
+      "sha256": "8666a64807be0af4741d05237684a5c04a427dfb0451d9b474e69508784522e0"
     },
     {
       "path": "/compiler/native-tex/ckx.map",
@@ -122,8 +122,8 @@
     },
     {
       "path": "/compiler/native-worker.js",
-      "size": 1838,
-      "sha256": "3d9c094452275b1262f2ca74f3ab5e215e5b9bf96aaf423dc8f5fee48917199b"
+      "size": 1799,
+      "sha256": "d4044cea89e7952733c291fdb6af33e8ff79f47e1b5e829974fc9c8aaf75d3c9"
     },
     {
       "path": "/compiler/NOTICE.txt",
@@ -1037,8 +1037,8 @@
     },
     {
       "path": "/compiler/xetex-worker.js",
-      "size": 238,
-      "sha256": "1bc020c5ab69e5a9d9b8c4c4fd1a5506053dcc127a099a7313833b409e9f03dd"
+      "size": 234,
+      "sha256": "5ec740bdf36fc8edeec63a780588b48117452d54ba59f8f1e1c17cc5334a48ef"
     }
   ]
 }
