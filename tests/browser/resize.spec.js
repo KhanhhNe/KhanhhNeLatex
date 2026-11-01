@@ -31,12 +31,17 @@ async function evidence(page, name) {
 test('actual PDF survives cheap desktop dragging, keyboard limits, reset and persistence', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.addInitScript(() => {
-    window.resizeAudit = { workers: 0, drafts: 0 };
+    window.resizeAudit = { workers: 0, compiles: 0, drafts: 0 };
     const NativeWorker = window.Worker;
     window.Worker = class extends NativeWorker {
       constructor(url, options) {
         super(url, options);
-        if (new URL(url, location.href).pathname === '/compiler/worker.js') window.resizeAudit.workers++;
+        this.engine = new URL(url, location.href).pathname === '/compiler/worker.js';
+        if (this.engine) window.resizeAudit.workers++;
+      }
+      postMessage(message, ...rest) {
+        if (this.engine && message?.cmd === 'compilelatex') window.resizeAudit.compiles++;
+        return super.postMessage(message, ...rest);
       }
     };
     const put = IDBObjectStore.prototype.put;
@@ -98,7 +103,8 @@ test('actual PDF survives cheap desktop dragging, keyboard limits, reset and per
   await drag(page, split(page), -140);
   const geometry = await page.locator('.pdf-area').boundingBox();
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.resizeAudit.workers)).toBe(audit.workers + 1);
+  await expect.poll(() => page.evaluate(() => window.resizeAudit.compiles)).toBeGreaterThan(audit.compiles);
+  expect(await page.evaluate(() => window.resizeAudit.workers)).toBe(audit.workers);
   expect(await viewer.getAttribute('data-src')).toBe(originalUrl);
   expect(await page.locator('.pdf-area').boundingBox()).toEqual(geometry);
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });

@@ -91,3 +91,27 @@ class PackageXHR {
 self.XMLHttpRequest = PackageXHR;
 importScripts('/compiler/swiftlatexpdftex.js');
 self.texlive_endpoint = `${self.location.origin}/pdftex-packages/`;
+// One engine serves every document in the page session. Documents may only write inside /work, which is
+// flushed before each job; the shared package cache and the rest of the filesystem are read-only to TeX.
+const sharedDirectories = ['/', '/tex', '/tmp', '/home', '/home/web_user'];
+const engineWriteFile = FS.writeFile;
+const setMode = (path, mode) => { try { FS.chmod(path, mode); } catch {} };
+FS.writeFile = (path, ...rest) => {
+  if (!String(path).startsWith('/tex/')) return engineWriteFile(path, ...rest);
+  setMode('/tex', 0o755);
+  setMode(path, 0o644);
+  try { return engineWriteFile(path, ...rest); } finally {
+    setMode(path, 0o444);
+    setMode('/tex', 0o555);
+  }
+};
+let filesystemLocked = false;
+const engineMessage = self.onmessage;
+self.onmessage = event => {
+  if (!filesystemLocked) {
+    filesystemLocked = true;
+    for (const name of FS.readdir('/tex')) if (name !== '.' && name !== '..') setMode(`/tex/${name}`, 0o444);
+    for (const directory of sharedDirectories) setMode(directory, 0o555);
+  }
+  return engineMessage.call(self, event);
+};

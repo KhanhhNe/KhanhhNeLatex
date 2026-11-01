@@ -1,4 +1,4 @@
-export const PDFTEX_WORKER = '/compiler/worker.js?v=startup-7';
+export const PDFTEX_WORKER = '/compiler/worker.js?v=startup-8';
 export const WORKER_START_TIMEOUT = 10000;
 const NOT_STARTED = 'The browser compiler did not start. If a debugger or browser automation tool is attached to this page, let it resume new workers, then reload.';
 
@@ -71,6 +71,11 @@ export function createEngineWarmup(workerFactory, loadTimeout = 300000, idleTime
       reject(error);
       warming.onDispose?.();
     },
+    // A compiler session owns the engine from now on; only an unadopted warmup expires when idle.
+    adopt() {
+      warming.adopted = true;
+      if (warming.ready) clearTimeout(warming.timer);
+    },
   };
   warming.timer = setTimeout(() => warming.dispose(new Error('Browser engine loading timed out. Check your connection and try again.')), loadTimeout);
   worker.onerror = event => warming.dispose(new Error(event.message || 'The browser compiler could not load.'));
@@ -81,7 +86,7 @@ export function createEngineWarmup(workerFactory, loadTimeout = 300000, idleTime
       warming.ready = true;
       warming.initializationMs = performance.now() - startedAt;
       clearTimeout(warming.timer);
-      warming.timer = setTimeout(() => warming.dispose(new Error('Browser engine warmup expired. Compile to restart it.')), idleTimeout);
+      if (!warming.adopted) warming.timer = setTimeout(() => warming.dispose(new Error('Browser engine warmup expired. Compile to restart it.')), idleTimeout);
       resolve({ initializationMs: warming.initializationMs });
     } else if (data?.result === 'failed') {
       warming.dispose(new Error(`The browser compiler could not load.${data.log ? ` ${String(data.log).slice(0, 512)}` : ''}`));
