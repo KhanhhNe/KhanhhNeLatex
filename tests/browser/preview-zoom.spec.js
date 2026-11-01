@@ -29,6 +29,52 @@ async function preview(page) {
   await page.waitForTimeout(300);
 }
 
+const pixelMapping = page => page.evaluate(() => {
+  const dpr = devicePixelRatio, pages = document.querySelector('.pdf-pages');
+  return { dpr, transform: pages.style.transform, zoom: document.querySelector('.pdf-viewer output').textContent,
+    canvases: [...document.querySelectorAll('.pdf-viewer canvas')].map(canvas => {
+      const box = canvas.getBoundingClientRect();
+      return { detail: canvas.classList.contains('pdf-detail'), width: canvas.width, height: canvas.height,
+        cssWidth: box.width * dpr, cssHeight: box.height * dpr, left: box.left * dpr, top: box.top * dpr };
+    }) };
+});
+
+const expectOneToOne = canvas => {
+  expect(canvas.width).toBe(Math.round(canvas.cssWidth));
+  expect(Math.abs(canvas.cssWidth - canvas.width)).toBeLessThan(.02);
+  expect(Math.abs(canvas.cssHeight - canvas.height)).toBeLessThan(.02);
+  expect(Math.abs(canvas.left - Math.round(canvas.left))).toBeLessThan(.02);
+  expect(Math.abs(canvas.top - Math.round(canvas.top))).toBeLessThan(.02);
+};
+
+// Full HD at 100%, Full HD at Windows' default 125% scaling (1536x864 CSS px), and a 1920x1080 HiDPI window.
+for (const [deviceScaleFactor, viewport] of [[1, { width: 1920, height: 1080 }],
+  [1.25, { width: 1536, height: 864 }], [2, { width: 1920, height: 1080 }]]) {
+  test(`fit-width preview at ${viewport.width}x${viewport.height} DPR ${deviceScaleFactor} maps canvas pixels 1:1 to device pixels`, async ({ browser, baseURL }) => {
+    const context = await browser.newContext({ baseURL, viewport, deviceScaleFactor });
+    const page = await context.newPage();
+    try {
+      await preview(page);
+      await expect.poll(async () => (await pixelMapping(page)).transform).toBe('none');
+      const fitted = await pixelMapping(page);
+      expect(fitted.dpr).toBe(deviceScaleFactor);
+      expect(fitted.canvases.length).toBeGreaterThan(0);
+      for (const canvas of fitted.canvases) expectOneToOne(canvas);
+      // Settled zooms re-render at the new device size instead of keeping a CSS-scaled bitmap.
+      for (let index = 0; index < 3; index++) await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+      await expect.poll(async () => {
+        const state = await pixelMapping(page);
+        return state.transform === 'none' && state.zoom !== fitted.zoom &&
+          state.canvases.every(canvas => canvas.width === Math.round(canvas.cssWidth) || !canvas.detail && canvas.width < canvas.cssWidth);
+      }).toBe(true);
+      const zoomed = await pixelMapping(page);
+      const sharp = zoomed.canvases.filter(canvas => canvas.detail || canvas.width === Math.round(canvas.cssWidth));
+      expect(sharp.length).toBeGreaterThan(0);
+      for (const canvas of sharp) expectOneToOne(canvas);
+    } finally { await context.close(); }
+  });
+}
+
 test('trackpad pinch scales existing PDF pixels without rendering, loading or compiling during the gesture', async ({ page }) => {
   await preview(page);
   const requests = [];
@@ -64,6 +110,7 @@ test('trackpad pinch scales existing PDF pixels without rendering, loading or co
   expect(evidence.sameCanvas).toBe(true);
   expect(evidence.compilerAfter).toBe(evidence.compilerCount);
   expect(evidence.workerAfter).toBe(evidence.workerCount);
+  expect(evidence.transform).toMatch(/^scale\(/);
   expect(evidence.transform).not.toBe('scale(1)');
   expect(requests).toEqual([]);
   expect(await page.locator('.pdf-viewer').getAttribute('data-src')).toBe(evidence.source);
@@ -98,7 +145,7 @@ test('real two-finger pinch zooms only the PDF, preserves its anchor and support
   const x = box.x + box.width / 2, y = box.y + box.height / 2;
   const state = () => page.evaluate(() => {
     const view = document.querySelector('.pdf-viewport'), sheet = document.querySelector('.pdf-sheet');
-    const scale = Number(document.querySelector('.pdf-pages').style.transform.match(/[\d.]+/)[0]);
+    const scale = Number(document.querySelector('.pdf-pages').dataset.zoom);
     return { scale, anchorX: (view.scrollLeft + view.clientWidth / 2 - sheet.offsetLeft) / scale,
       anchorY: (view.scrollTop + view.clientHeight / 2 - sheet.offsetTop) / scale,
       pageScale: visualViewport.scale, top: view.scrollTop, workers: window.compilerStarts };
@@ -145,11 +192,15 @@ test('multi-page scrolling and high zoom bound canvas memory; switching terminat
   for (let index = 0; index < 15; index++) await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await expect(page.locator('.pdf-viewer output')).toHaveText('400%');
   await page.locator('.pdf-viewport').evaluate(view => { view.scrollTop = view.scrollHeight; });
-  await expect(page.locator('.pdf-page').last().locator('canvas')).toBeVisible();
+  await expect(page.locator('.pdf-page').last().locator('canvas').first()).toBeVisible();
+  await expect.poll(() => page.locator('.pdf-viewer canvas.pdf-detail').count()).toBeGreaterThan(0);
   const pixels = await page.locator('.pdf-viewer canvas').evaluateAll(canvases =>
-    canvases.map(canvas => canvas.width * canvas.height));
-  expect(pixels.length).toBeLessThanOrEqual(3);
-  for (const count of pixels) expect(count).toBeLessThanOrEqual(2_000_000);
+    canvases.map(canvas => ({ count: canvas.width * canvas.height, detail: canvas.classList.contains('pdf-detail') })));
+  expect(pixels.filter(canvas => !canvas.detail).length).toBeLessThanOrEqual(3);
+  expect(pixels.length).toBeLessThanOrEqual(6);
+  // Over-cap zooms keep a low-resolution backdrop and only a viewport-sized sharp tile.
+  for (const canvas of pixels) expect(canvas.count).toBeLessThanOrEqual(canvas.detail ? 12_000_000 : 1_000_000);
+  for (const canvas of (await pixelMapping(page)).canvases.filter(canvas => canvas.detail)) expectOneToOne(canvas);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   expect(await page.locator('.pdf-viewer').evaluate(node => getComputedStyle(node).transitionDuration)).toBe('0s');
   await page.getByRole('button', { name: 'New document', exact: true }).click();
@@ -213,7 +264,7 @@ test('WebKit gesture events scale the existing raster and preserve browser zoom'
     await preview(page);
     const result = await page.evaluate(async () => {
       const viewport = document.querySelector('.pdf-viewport'), canvas = viewport.querySelector('canvas');
-      const original = Number(document.querySelector('.pdf-pages').style.transform.match(/[\d.]+/)[0]);
+      const original = Number(document.querySelector('.pdf-pages').dataset.zoom);
       const browserScale = visualViewport.scale, box = viewport.getBoundingClientRect();
       const fire = (type, scale) => viewport.dispatchEvent(Object.assign(new Event(type, { cancelable: true }),
         { scale, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }));
@@ -225,7 +276,7 @@ test('WebKit gesture events scale the existing raster and preserve browser zoom'
       }
       fire('gestureend', 1.5);
       return { original, browserScale, afterBrowser: visualViewport.scale,
-        after: Number(document.querySelector('.pdf-pages').style.transform.match(/[\d.]+/)[0]) };
+        after: Number(document.querySelector('.pdf-pages').dataset.zoom) };
     });
     expect(result.after).toBeGreaterThan(result.original * 1.4);
     expect(result.afterBrowser).toBe(result.browserScale);
