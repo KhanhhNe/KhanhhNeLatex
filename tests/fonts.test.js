@@ -120,8 +120,57 @@ test('bounded unconditional literal macros resolve before use, including style n
   assert.throws(() => detectFonts(`${aliases}\\def\\fontJ{Roboto}\\setmainfont{\\fontA}`), /eight literal aliases/);
 });
 
+test('raw kerning and ligature switches preserve their exact OpenType semantics', async () => {
+  const input = String.raw`\newfontfamily\body[RawFeature={-kern,-liga,-clig}]{Roboto}`;
+  const declarations = detectFonts(input);
+  assert.deepEqual(declarations[0].features, ['RawFeature={-kern,-liga,-clig}']);
+  const loader = new GoogleFontLoader({ cacheStorage: undefined, fetcher: async endpoint => {
+    const query = new URL(endpoint, 'http://local').searchParams;
+    return endpoint.startsWith('/api') ? Response.json({ url, family: query.get('family'), weight: Number(query.get('weight')), italic: query.get('italic') === '1' }) : new Response(ttf);
+  } });
+  const prepared = await loader.prepare(input, declarations, new AbortController().signal, () => {});
+  assert.match(prepared.source, /RawFeature=\{-kern,-liga,-clig\}/);
+  for (const value of ['+xxxx', '-kern;file=x', String.raw`\computed`, 'kern', '+liga=0', '../file']) {
+    assert.throws(() => detectFonts(`\\fontspec[RawFeature={${value}}]{Roboto}`), /Unsupported fontspec option/);
+  }
+});
+
+test('conventional virtual filenames resolve exact Google family/style without fetching paths', async () => {
+  const input = String.raw`\newfontfamily\regular[Path=fonts/,RawFeature={-kern,-liga,-clig}]{Roboto-Regular.ttf}
+\newfontfamily\bold{Roboto-Bold.ttf}[Path=fonts/]
+\newfontfamily\italic[Path=fonts/]{Roboto-BoldItalic.ttf}
+\newfontfamily\heading[Path=fonts/]{CrimsonPro-Regular.ttf}`;
+  const declarations = detectFonts(input);
+  assert.deepEqual(declarations.map(item => [item.faces.UprightFont.family, item.faces.UprightFont.weight, item.faces.UprightFont.italic]),
+    [['Roboto', 400, false], ['Roboto', 700, false], ['Roboto', 700, true], ['Crimson Pro', 400, false]]);
+  assert.equal(fontFace('OpenSans-Italic.ttf').family, 'Open Sans');
+  const requests = [];
+  const loader = new GoogleFontLoader({ cacheStorage: undefined, fetcher: async endpoint => {
+    requests.push(endpoint);
+    const query = new URL(endpoint, 'http://local').searchParams;
+    return endpoint.startsWith('/api') ? Response.json({ url, family: query.get('family'), weight: Number(query.get('weight')), italic: query.get('italic') === '1' }) : new Response(ttf);
+  } });
+  const prepared = await loader.prepare(input, declarations, new AbortController().signal, () => {});
+  assert.equal(requests.some(endpoint => endpoint.includes('fonts/') || endpoint.includes('Roboto-Bold.ttf')), false);
+  assert.equal(prepared.source.includes('Path='), false);
+  assert.match(prepared.source, /RawFeature=\{-kern,-liga,-clig\}/);
+  assert.ok(input.includes('Path=fonts/'));
+  for (const name of ['Roboto.ttf', 'Roboto-Bold-Unknown.ttf', 'IBM-PlexSans-Regular.ttf', '../Roboto-Regular.ttf', 'fonts/Roboto-Regular.ttf', 'https://example.com/Roboto-Regular.ttf']) {
+    assert.throws(() => fontFace(name));
+  }
+  for (const path of ['../', 'C:/fonts/', 'https://example.com/', String.raw`\computed`]) {
+    assert.throws(() => detectFonts(`\\setmainfont[Path=${path}]{Roboto-Regular.ttf}`));
+  }
+  assert.throws(() => detectFonts(String.raw`\defaultfontfeatures{Path=fonts/}`));
+  const styledInput = String.raw`\newfontfamily\boldface{Roboto-Bold.ttf}\newfontfamily\italicface{Roboto-Italic.ttf}\textbf{Sample}\textit{Sample}`;
+  const styledDeclarations = detectFonts(styledInput);
+  await loader.prepare(styledInput, styledDeclarations, new AbortController().signal, () => {});
+  assert.equal(styledDeclarations[0].faces.ItalicFont.weight, 700);
+  assert.equal(styledDeclarations[1].faces.BoldFont.italic, true);
+});
+
 test('native converter resolves bundled absolute OTF paths only through its static manifest', async () => {
-  const self = { location: { href: 'https://app.test/compiler/dvipdf-worker.js?v=fontspec-2', search: '?v=fontspec-2' }, postMessage() {} };
+  const self = { location: { href: 'https://app.test/compiler/dvipdf-worker.js?v=fontspec-3', search: '?v=fontspec-3' }, postMessage() {} };
   const imports = [];
   const scope = { self, URL, importScripts: url => imports.push(url) };
   runInNewContext(await readFile(new URL('../public/compiler/native-manifest.js', import.meta.url), 'utf8'), scope);
@@ -131,7 +180,7 @@ test('native converter resolves bundled absolute OTF paths only through its stat
     send() { this.status = 200; }
   };
   runInNewContext(await readFile(new URL('../public/compiler/native-package-loader.js', import.meta.url), 'utf8'), scope);
-  assert.deepEqual(imports, ['/compiler/native-manifest.js?v=fontspec-2']);
+  assert.deepEqual(imports, ['/compiler/native-manifest.js?v=fontspec-3']);
   const xhr = new self.XMLHttpRequest();
   xhr.open('GET', 'https://texlive.texlyre.org/xetex/47//tex/lmroman10-regular.otf');
   xhr.send();
@@ -146,7 +195,7 @@ test('native converter resolves bundled absolute OTF paths only through its stat
   for (const engine of ['xetex', 'dvipdf']) {
     imports.length = 0;
     runInNewContext(await readFile(new URL(`../public/compiler/${engine}-worker.js`, import.meta.url), 'utf8'), scope);
-    assert.equal(imports[0], '/compiler/native-package-loader.js?v=fontspec-2');
+    assert.equal(imports[0], '/compiler/native-package-loader.js?v=fontspec-3');
   }
   const children = [];
   scope.Worker = class {
@@ -156,7 +205,7 @@ test('native converter resolves bundled absolute OTF paths only through its stat
   runInNewContext(await readFile(new URL('../public/compiler/native-worker.js', import.meta.url), 'utf8'), scope);
   for (let pass = 0; pass < 2; pass++) children[0].onmessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(1) } });
   assert.deepEqual(children.map(child => child.url), [
-    '/compiler/xetex-worker.js?v=fontspec-2', '/compiler/dvipdf-worker.js?v=fontspec-2',
+    '/compiler/xetex-worker.js?v=fontspec-3', '/compiler/dvipdf-worker.js?v=fontspec-3',
   ]);
 });
 

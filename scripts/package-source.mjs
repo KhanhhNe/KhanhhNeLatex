@@ -11,6 +11,8 @@ try {
   ], { encoding: 'utf8' }))[0];
   if (result.files.some(({ path }) => /(^|\/)(?:\.env(?:\..*)?|\.dev\.vars(?:\..*)?)$/.test(path) && path !== '.env.example'))
     throw new Error('Refusing to publish an archive containing a secret environment file.');
+  if (result.size > 25 * 1024 * 1024)
+    throw new Error('The application source archive exceeds the Cloudflare 25 MiB static asset limit.');
   await copyFile(join(directory, result.filename), 'public/source.tar.gz');
   console.log(`Public source archive: ${result.files.length} allowlisted files; ${result.size} bytes.`);
 } finally {

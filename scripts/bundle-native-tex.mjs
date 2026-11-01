@@ -9,6 +9,11 @@ const manifest = {
 const original = await readFile(new URL('manifest.js', compiler), 'utf8');
 const bundled = JSON.parse(original.slice(original.indexOf('=') + 1).trim().replace(/;$/, ''));
 for (const [key, name] of Object.entries(bundled)) if (!key.startsWith('10/')) manifest[key] = `tex/${name}`;
+// Preserve separately acquired, hash-pinned native drawing/driver packages.
+const currentText = await readFile(new URL('native-manifest.js', compiler), 'utf8');
+const current = JSON.parse(currentText.slice(currentText.indexOf('=') + 1).trim().replace(/;$/, ''));
+for (const [key, name] of Object.entries(current))
+  if (!key.startsWith('10/') && name.startsWith('native-tex/')) manifest[key] = name;
 await mkdir(new URL('native-tex/', compiler), { recursive: true });
 const formatUrl = 'https://raw.githubusercontent.com/SwiftLaTeX/Texlive-Ondemand/cc2146e220658f5ee0f8643355252ae0995fbc98/swiftlatexxetex.fmt';
 async function acquire(url, name) {

@@ -17,8 +17,8 @@
     },
     {
       "path": "/compiler/native-manifest.js",
-      "size": 8595,
-      "sha256": "12b5e0f04dae3bc4d29a9d4b101c156e6719f9f874335872ff14f2e84271a45c"
+      "size": 13432,
+      "sha256": "675c608dc71cd3ec03f57481a5ced0eb7914a541f0f784f6804dba08debfc861"
     },
     {
       "path": "/compiler/native-package-loader.js",
@@ -29,6 +29,11 @@
       "path": "/compiler/native-tex/ckx.map",
       "size": 1289,
       "sha256": "52859584f1baa4aea9e5c6318ded82b1b5bfa713dcdc945bda7e26b206c8bdc4"
+    },
+    {
+      "path": "/compiler/native-tex/everyshi.sty",
+      "size": 3878,
+      "sha256": "d198f4c276516b07fcd6200246c0aec3380dca3bd64f872f4b2adf9c74d59183"
     },
     {
       "path": "/compiler/native-tex/expl3.sty",
@@ -54,6 +59,26 @@
       "path": "/compiler/native-tex/glyphlist.txt",
       "size": 77146,
       "sha256": "1d090feeb2cef487186d67f42d0b106bf09abf67e2cd94ab99e238d57c561d56"
+    },
+    {
+      "path": "/compiler/native-tex/graphics.cfg",
+      "size": 1224,
+      "sha256": "feb91e48789a21e4acced98e952c77a2e2cf4a77e01bf147b59fa56a1b3f2008"
+    },
+    {
+      "path": "/compiler/native-tex/graphics.sty",
+      "size": 16932,
+      "sha256": "f293789153e8de00444f2cb031fc66d040fa0e23ece99811e07db18991a03e9b"
+    },
+    {
+      "path": "/compiler/native-tex/graphicx.sty",
+      "size": 9067,
+      "sha256": "431ccfe3c42cd8e20f956fd60e7d55ce0f25f69d82cfb054b76b5c1d661e96e5"
+    },
+    {
+      "path": "/compiler/native-tex/hxetex.def",
+      "size": 45261,
+      "sha256": "9859d45c33ebd45a85370c6320359d5702dee8e848039eaae1cb7ff330893eba"
     },
     {
       "path": "/compiler/native-tex/kanjix.map",
@@ -131,6 +156,331 @@
       "sha256": "9d7bee92b7cfdaa6e03c7df895003145ed982be0bf6d1e78fdd5eb71bf4945aa"
     },
     {
+      "path": "/compiler/native-tex/pgf.cfg",
+      "size": 926,
+      "sha256": "d7249605d50f0ff91b5fbd78fcb203c2faa8902bb6690edd095b7f73c263470d"
+    },
+    {
+      "path": "/compiler/native-tex/pgf.revision.tex",
+      "size": 465,
+      "sha256": "c84a337d92a0445fde701a57a4ee11a272e12f26e7f1f105105889a88c3c6a05"
+    },
+    {
+      "path": "/compiler/native-tex/pgf.sty",
+      "size": 1090,
+      "sha256": "06dcf6606b7092145a91f3589bdb50d18d4a85f2c00dad1213823ba6c2d2894b"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcomp-version-0-65.sty",
+      "size": 21013,
+      "sha256": "d9a616d63e375d8f2ee0f1a72bacf22215021cc05a0dcfe6e2e11e12c0fdded1"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcomp-version-1-18.sty",
+      "size": 989,
+      "sha256": "907e93c44c868a520ee1e7b95012597024c3845c637aede8b71146500a6f61ee"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcore.code.tex",
+      "size": 992,
+      "sha256": "634c1c4b233e75939ebb3f9fddb5328fff21680d6b929addd6d1e82f6e429016"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcore.sty",
+      "size": 410,
+      "sha256": "1fd331155e8875bca29ef85b8053b5835b1afa118a7f98387e5fd5ef57a7e4f9"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorearrows.code.tex",
+      "size": 43820,
+      "sha256": "144fcd4daa00cb5092657f80197d9d6891cfed3865407d84fbfe275896d967c7"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcoreexternal.code.tex",
+      "size": 19324,
+      "sha256": "2e1dddb719fc71fd5b69b7b4031e8effe6a52cf32f754f59054d5b7510743987"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcoregraphicstate.code.tex",
+      "size": 6038,
+      "sha256": "05614e91c125781cda429b9745950b7a0a04ba482330d2a7293472b8614ed9e5"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcoreimage.code.tex",
+      "size": 6948,
+      "sha256": "a2a8fa8e7480f7bd483ca87af0ac0531b589b1f838b2541c16af9d8076a6c810"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorelayers.code.tex",
+      "size": 4883,
+      "sha256": "3f0678387084e67af9792726b385c06bd35e2039a906cb635c200fc01901ba9f"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcoreobjects.code.tex",
+      "size": 2544,
+      "sha256": "94bf5b38a0b3512e24c482d4bfd49d7a079f042dea0d9c0b1a023f126ecb1982"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorepathconstruct.code.tex",
+      "size": 44189,
+      "sha256": "a2855a934743575e765879cf20e7bde711c3eeb762beea750d35752a02581d8e"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorepathprocessing.code.tex",
+      "size": 17311,
+      "sha256": "95c9a4bf610a412ce733674fad7716632c5c49d40f12b85b23c0b2e33f7fea34"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorepathusage.code.tex",
+      "size": 21302,
+      "sha256": "0cdbc9bf30bc254cbaa2d00e11cf3f3ec99af91279ecc4d2d4ed9f902c137011"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorepatterns.code.tex",
+      "size": 9690,
+      "sha256": "9a8240faf716975a9609a8662e1f3e686400ed909ccc4ecbbf3a182dbebc4aaa"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorepoints.code.tex",
+      "size": 33335,
+      "sha256": "175f77fce9a87b125b4eff6d6b0c3d4ad2e078ffa2ae114ef257c8239befd8fe"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorequick.code.tex",
+      "size": 2965,
+      "sha256": "ca40ff7c3f5f61ca9ce13bc35d846428faa41bce7e7e1d8e17893d345595b973"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorerdf.code.tex",
+      "size": 5196,
+      "sha256": "2315aa0445d0ef9deb0177566ccd771752608a440dd41453a001b035d06c7d13"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcorescopes.code.tex",
+      "size": 20726,
+      "sha256": "d2d1baebabfecf872bb37ac25c9705838c6a3a596113e674ec70c14d78546540"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcoreshade.code.tex",
+      "size": 35249,
+      "sha256": "293d64946c2e9d4cde65eea0f81d5772ea2dc3e04a3d3d13a360cf1d6bde7afd"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcoretransformations.code.tex",
+      "size": 21989,
+      "sha256": "7a419467d19d71a7141f190a61e105fc07482647f9af1ca8523db5efbad57652"
+    },
+    {
+      "path": "/compiler/native-tex/pgfcoretransparency.code.tex",
+      "size": 8842,
+      "sha256": "69a8c6f97ddda44e04ef461556add75564a0d85d5f23f961265b9bf654bb3775"
+    },
+    {
+      "path": "/compiler/native-tex/pgffor.code.tex",
+      "size": 23777,
+      "sha256": "1ee93536a5d5e161ac4b37f5ec69bc64230d6df870013933aaf2d7c88fad4ab8"
+    },
+    {
+      "path": "/compiler/native-tex/pgffor.sty",
+      "size": 348,
+      "sha256": "eceb84f9f743071017f78bb6a611b0a7393aea644ad87ec8ea9076d82a71c961"
+    },
+    {
+      "path": "/compiler/native-tex/pgfint.code.tex",
+      "size": 3063,
+      "sha256": "95f8053efeeb2267d543d8d1afb10195d6114765eea7b90755b4e0c359324d64"
+    },
+    {
+      "path": "/compiler/native-tex/pgfkeys.code.tex",
+      "size": 36815,
+      "sha256": "7301d0b23c5fb02c8f88b5a56eba6c1072f297cbea8e1858dacc29db9d7af9ff"
+    },
+    {
+      "path": "/compiler/native-tex/pgfkeys.sty",
+      "size": 274,
+      "sha256": "062069fd4189aa3f27fb70eba69380065ef87f8c0d5b08288830ab96dfaa3f0c"
+    },
+    {
+      "path": "/compiler/native-tex/pgfkeysfiltered.code.tex",
+      "size": 37439,
+      "sha256": "8ea3e35f41976ab28b4e09057e50ac905bbfc132b604d6ba20d56707a4837f2b"
+    },
+    {
+      "path": "/compiler/native-tex/pgflibraryplothandlers.code.tex",
+      "size": 32995,
+      "sha256": "c471cbb0fb59237e8dea65b4eec81de5c6860a26f124a3996e47538f93492619"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmath.code.tex",
+      "size": 521,
+      "sha256": "fda11c2136c3d39c2b06f80484c91c769a6d8b57edbf6efbcc9ec7027e718e12"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmath.sty",
+      "size": 306,
+      "sha256": "bfc36b63817f1d17be7f628a77fe02d3ab36065fdc4fad060e7ce3a19f930203"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathcalc.code.tex",
+      "size": 13391,
+      "sha256": "d9896b3cf42763bccc02d9cc41de57bdba096e5db0ba848216dc63242fd22cb8"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfloat.code.tex",
+      "size": 104938,
+      "sha256": "65fb8572b59a0b983b55be959a086f0de4472e4b3a85d2f19e9c72c41cfb42d8"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfunctions.base.code.tex",
+      "size": 10157,
+      "sha256": "1fdfb0eea14b2436fc79264b09ea3b2cdc11fe1fa8b11ea7cb8bc6ea31cd5109"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfunctions.basic.code.tex",
+      "size": 28176,
+      "sha256": "1bc5c5e0ffaf6c5958b69ed37de1e5ff80f8be7cd37ba25fcd3f38d147113b80"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfunctions.code.tex",
+      "size": 9054,
+      "sha256": "260b7b11120f2b98858140746482950ff43cde3e2a659e8c2923905b65e0d066"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfunctions.comparison.code.tex",
+      "size": 3865,
+      "sha256": "96c06a8c197f40c7d1a751b558c573541ec38cd56ee312bd6b9b028e2aa7ab76"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfunctions.integerarithmetics.code.tex",
+      "size": 3177,
+      "sha256": "6e9383c1e63a6dbcfd2d95369905df566bdb6e7374c06e28c15a25eb782dc46b"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfunctions.misc.code.tex",
+      "size": 10925,
+      "sha256": "fbfbbf754dbef20b3915a30ab9fbb2870886a0ae7ae53691646547d07a81578c"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfunctions.random.code.tex",
+      "size": 7787,
+      "sha256": "57f9c58bd3bd8f9dbf0df178a228a4a4194f914939ce842f4f3ae96c25e87281"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfunctions.round.code.tex",
+      "size": 3379,
+      "sha256": "be06eea9d014f743e0931839c4bfc14354ecc1bd090bd36890ca8394b94ea955"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathfunctions.trigonometric.code.tex",
+      "size": 92405,
+      "sha256": "11f553dfb6c68eb095da1b2b1b2adeb3d2c3fac573b2b8d525da8753f311a92a"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathparser.code.tex",
+      "size": 36526,
+      "sha256": "8678c7441cba51d51ae90f2af3415821d77f1bf5f702d6dd988327bc2af81f54"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmathutil.code.tex",
+      "size": 8471,
+      "sha256": "764f9ee4572574a0882072d32febc5bdfca0742f99bf911fa1f28bd9e4e3098b"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmodulematrix.code.tex",
+      "size": 21201,
+      "sha256": "1d7f211c3399ca08b4af8b942e6515650c639eb131d3dfcf08284b84d3fa72a4"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmoduleplot.code.tex",
+      "size": 16121,
+      "sha256": "634b06269314d6a626e48f0cf97ab9f19fcd2de552d2bd3bf60ba30bf77da7e2"
+    },
+    {
+      "path": "/compiler/native-tex/pgfmoduleshapes.code.tex",
+      "size": 43259,
+      "sha256": "9ba0b395c108127dd1cdeae0b2cbd845bdd4f7e5d3da33b5cca9bd867d6091cb"
+    },
+    {
+      "path": "/compiler/native-tex/pgfrcs.code.tex",
+      "size": 4494,
+      "sha256": "7da12836966acc9b880cada8692b95064b7477bd6fdf65745d09c780cad82694"
+    },
+    {
+      "path": "/compiler/native-tex/pgfrcs.sty",
+      "size": 325,
+      "sha256": "51422f19007c112aefd7eafc16c2e11b0b864ad229f7fe0502b846dea7c0dc80"
+    },
+    {
+      "path": "/compiler/native-tex/pgfsys-common-pdf.def",
+      "size": 5546,
+      "sha256": "24c1bf9b04f1f022c1b2b53178f28dcd67eb9a2ad8b2252fc68b6b1e60093817"
+    },
+    {
+      "path": "/compiler/native-tex/pgfsys-dvipdfmx.def",
+      "size": 18454,
+      "sha256": "84716653358686c677be3d4c9aeb2b7add33a975f9e627c1a7618f6aa148115e"
+    },
+    {
+      "path": "/compiler/native-tex/pgfsys-xetex.def",
+      "size": 2761,
+      "sha256": "622df105fb6b41494e5be7172077fcfc206bb00885160ac8fc122895599afd99"
+    },
+    {
+      "path": "/compiler/native-tex/pgfsys.code.tex",
+      "size": 60269,
+      "sha256": "3edbf850b825a62cd5ca487d4664dae9ba1fa82fa808ae10ce42d19140c06882"
+    },
+    {
+      "path": "/compiler/native-tex/pgfsys.sty",
+      "size": 443,
+      "sha256": "987f70ae471d8121ea2fa3b2aa8d04d833b63e031154200a1cec924f3402c448"
+    },
+    {
+      "path": "/compiler/native-tex/pgfsysprotocol.code.tex",
+      "size": 1896,
+      "sha256": "0b35711fde9cd613b8dd0042bc7275853112603c2d15aceea176b0e1aaa2d489"
+    },
+    {
+      "path": "/compiler/native-tex/pgfsyssoftpath.code.tex",
+      "size": 7778,
+      "sha256": "d5dab7d482f6d6ec614c41ad1eaa9bbad2c68e1aa79878f8de4b4f07cea214ea"
+    },
+    {
+      "path": "/compiler/native-tex/pgfutil-common-lists.tex",
+      "size": 7250,
+      "sha256": "3ca380f6b043c2abb614010d572a9d6ee522289fa0c5b92c51e9ae75de3b67fc"
+    },
+    {
+      "path": "/compiler/native-tex/pgfutil-common.tex",
+      "size": 28309,
+      "sha256": "f0fe980e6ea7ad74dceeb310da9a2e1796a94b887704a41c255472c8e5cde4fb"
+    },
+    {
+      "path": "/compiler/native-tex/pgfutil-latex.def",
+      "size": 6286,
+      "sha256": "d042908cac164d94dba94c70e52b1961717120e48886d2aff2964df59df19cdc"
+    },
+    {
+      "path": "/compiler/native-tex/puenc.def",
+      "size": 122447,
+      "sha256": "72c6a8600636385b0a4154ab287465427c3fc320a0988ec9a1bf2fe8654552b1"
+    },
+    {
+      "path": "/compiler/native-tex/pzdr.tfm",
+      "size": 1528,
+      "sha256": "6b4254217851e285d1d5c6dfe677284396eeffc59f709ad775404b76dc99d513"
+    },
+    {
+      "path": "/compiler/native-tex/se-ascii-print.def",
+      "size": 3257,
+      "sha256": "77c07ed6267049f38f3802358bd715b2b017f63f4b2a72cd994599864f8ad67e"
+    },
+    {
+      "path": "/compiler/native-tex/stringenc.sty",
+      "size": 21514,
+      "sha256": "b134a7bba648a6987afc83ddfb6a3fcdad43bcae6b616e533eb484306d56ac45"
+    },
+    {
       "path": "/compiler/native-tex/swiftlatexxetex.fmt",
       "size": 22791842,
       "sha256": "fecae874377a2f7cb31811e41edabbda1e19f762d00630a8faa9fb12043b5e5f"
@@ -146,6 +496,26 @@
       "sha256": "4b11bf2dcd65b004ee2023c5392339aaf89429bef0d3ace13b7b098d108cd991"
     },
     {
+      "path": "/compiler/native-tex/tikz.code.tex",
+      "size": 187592,
+      "sha256": "f84d9a96d5c0b08b81809697f2bb05bd592f50e13a60956df22e5f9a776e1a53"
+    },
+    {
+      "path": "/compiler/native-tex/tikz.sty",
+      "size": 339,
+      "sha256": "d842812939fd3c32bb07269a3422f92785ea140868be558d993fb8a8bd8dc4a2"
+    },
+    {
+      "path": "/compiler/native-tex/tikzlibrarytopaths.code.tex",
+      "size": 11544,
+      "sha256": "ce1b35cf07c15221f23af55b1d575f1bdba646e53f8158927d3b969aa731a6f2"
+    },
+    {
+      "path": "/compiler/native-tex/trig.sty",
+      "size": 3976,
+      "sha256": "06ceddc6a846d34b8ff178ffe49b23b384a819c9fbd15b45d6fcf895febfb928"
+    },
+    {
       "path": "/compiler/native-tex/ts1cmr.fd",
       "size": 2431,
       "sha256": "0c41f180ac83d031cf99284624548e6a9b5939517e73dcb8cbdb43cd59c6f947"
@@ -154,6 +524,16 @@
       "path": "/compiler/native-tex/tuenc.def",
       "size": 27440,
       "sha256": "e18acd059205ed7a1dd26f0f0246e8fe93281ccf859baf23cb6c75552e5ad033"
+    },
+    {
+      "path": "/compiler/native-tex/xcolor.sty",
+      "size": 55589,
+      "sha256": "9fab30c7e6c5ef15988dbbaa40069a48bf748479cc0eea1211be7f9fbee2b0e8"
+    },
+    {
+      "path": "/compiler/native-tex/xetex.def",
+      "size": 12707,
+      "sha256": "7c81a9b69d3e7e925719a164d4b1b877a4d14efae6d64bd2319f53e1b6a9456d"
     },
     {
       "path": "/compiler/native-tex/xparse.sty",
@@ -167,8 +547,13 @@
     },
     {
       "path": "/compiler/NOTICE.txt",
-      "size": 3480,
-      "sha256": "400bcfe9d2fcb34dc4ea2a7d263603230988bebb3a9a267170d9655bafe6af0d"
+      "size": 4590,
+      "sha256": "4e860787bc75f872cdada75ece6727abb13d2d167487f6d1b124e5850391c3d2"
+    },
+    {
+      "path": "/compiler/pgf-source.tar.gz",
+      "size": 2600630,
+      "sha256": "2d18bdd3470623eb437bb0ef3d2c75d8b7fb0b358c47e4a214c77aafca3f6864"
     },
     {
       "path": "/compiler/swiftlatex-source.tar.gz",
@@ -1074,6 +1459,11 @@
       "path": "/compiler/worker.js",
       "size": 1038,
       "sha256": "d9de853a332ba3a65067577792e5e7acf7eb1b3b5d65a628e437d630f627a00b"
+    },
+    {
+      "path": "/compiler/xcolor-source.tar.gz",
+      "size": 98183,
+      "sha256": "c0bc93d51bbe606f67df660ed84a9bdc5d443c2f6f54acd60db7c1008afd5313"
     },
     {
       "path": "/compiler/xetex-worker.js",

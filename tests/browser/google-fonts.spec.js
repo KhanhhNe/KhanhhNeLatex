@@ -106,6 +106,28 @@ test('font cancellation aborts downloads, latest normal compile stays active, an
   expect(result.idle).toBe(true);
 });
 
+test('virtual Google filenames and raw feature switches compile native xcolor/TikZ drawings', async ({ page }) => {
+  await fontService(page);
+  await loadCompiler(page);
+  const input = await readFile(new URL('../fixtures/native-drawing.tex', import.meta.url), 'utf8');
+  const requests = [];
+  page.on('request', request => requests.push(request.url()));
+  const result = await page.evaluate(async source => {
+    const output = await window.fontCompiler.compile(source).catch(error => { throw new Error(`${error.message}\n${error.log || ''}`); });
+    return { bytes: Array.from(new Uint8Array(output.pdf)), idle: window.fontCompiler.active === null };
+  }, input);
+  const bytes = new Uint8Array(result.bytes);
+  expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
+  const fonts = await inspectFonts(bytes);
+  for (const name of ['Roboto-Regular', 'Roboto-Bold', 'CrimsonPro-Regular']) {
+    expect(fonts.some(font => font.name.endsWith(name) && font.embeddedBytes > 1000)).toBe(true);
+  }
+  expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+  expect(result.idle).toBe(true);
+  expect(requests.some(url => url.includes('texlive.texlyre.org') || url.includes('/fonts/Roboto'))).toBe(false);
+  await writeFile(test.info().outputPath('native-drawing.pdf'), bytes);
+});
+
 test('imported fontspec documents support default native fonts, literal macros and standard feature positions', async ({ page }) => {
   await fontService(page);
   await page.goto('/#workspace');

@@ -1,0 +1,14 @@
+\documentclass{article}
+\usepackage{fontspec,xcolor,tikz}
+\usepackage[hidelinks]{hyperref}
+\newfontfamily\body[Path=fonts/,RawFeature={-kern,-liga,-clig}]{Roboto-Regular.ttf}
+\newfontfamily\drawbold[Path=fonts/]{Roboto-Bold.ttf}
+\newfontfamily\heading[Path=fonts/]{CrimsonPro-Regular.ttf}
+\begin{document}
+\begin{tikzpicture}[remember picture,overlay]
+\node[anchor=north west,text=blue,xshift=72pt,yshift=-72pt] at (current page.north west) {\body Drawing sample};
+\draw[red,line width=1pt] (0,0) -- (1,1);
+\end{tikzpicture}
+{\drawbold Native bold sample.} {\heading Native heading sample.}
+\href{https://example.com}{Public link sample.}
+\end{document}
