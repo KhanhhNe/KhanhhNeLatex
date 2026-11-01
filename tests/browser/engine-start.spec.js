@@ -21,21 +21,21 @@ async function observeWorkers(page) {
   });
 }
 
-test('engine becomes ready while the main bundle is held, then the app adopts it once', async ({ page }) => {
+test('engine becomes ready while main JS and CSS are held, then the app adopts it once', async ({ page }) => {
   await observeWorkers(page);
   const engineRequests = [];
   page.context().on('request', request => {
-    if (/\/compiler\/(?:swiftlatexpdftex\.wasm|formats\/pdftex-)/.test(request.url())) engineRequests.push(request.url());
+    if (/\/compiler\/(?:swiftlatexpdftex\.wasm|formats\/pdftex-|tex\/)/.test(request.url())) engineRequests.push(request.url());
   });
   let release;
   const hold = new Promise(resolve => { release = resolve; });
-  await page.route(/\/assets\/index-[^/]+\.js$/, async route => {
+  await page.route(/\/assets\/index-[^/]+\.(?:js|css)$/, async route => {
     await hold;
     await route.continue();
   });
   await page.goto('/#workspace', { waitUntil: 'commit' });
   try {
-    await page.waitForFunction(() => window.engineStarts[0]?.ready);
+    await page.waitForFunction(() => window.engineStarts[0]?.ready, null, { polling: 50 });
     expect(await page.evaluate(() => Boolean(window.latex))).toBe(false);
     expect(await page.locator('#root').textContent()).toBe('');
   } finally { release(); }
@@ -47,6 +47,9 @@ test('engine becomes ready while the main bundle is held, then the app adopts it
   expect(await page.evaluate(() => window.latex.timings().compile.initializationMs)).toBe(0);
   expect(engineRequests.filter(url => url.includes('.wasm'))).toHaveLength(1);
   expect(engineRequests.filter(url => url.includes('/formats/'))).toHaveLength(1);
+  const packageRequests = engineRequests.filter(url => url.includes('/tex/'));
+  expect(packageRequests).toHaveLength(44);
+  expect(new Set(packageRequests).size).toBe(packageRequests.length);
 });
 
 test('the app adopts a still-loading early worker without restarting its downloads', async ({ page, context }) => {

@@ -1,4 +1,4 @@
-export const PDFTEX_WORKER = '/compiler/worker.js?v=startup-5';
+export const PDFTEX_WORKER = '/compiler/worker.js?v=startup-6';
 
 export function createEngineWarmup(workerFactory, loadTimeout = 300000, idleTimeout = 60000) {
   const startedAt = performance.now();
@@ -31,7 +31,7 @@ export function createEngineWarmup(workerFactory, loadTimeout = 300000, idleTime
       warming.timer = setTimeout(() => warming.dispose(new Error('Browser engine warmup expired. Compile to restart it.')), idleTimeout);
       resolve({ initializationMs: warming.initializationMs });
     } else if (data?.result === 'failed') {
-      warming.dispose(new Error('The browser compiler could not load.'));
+      warming.dispose(new Error(`The browser compiler could not load.${data.log ? ` ${String(data.log).slice(0, 512)}` : ''}`));
     }
   };
   return warming;
