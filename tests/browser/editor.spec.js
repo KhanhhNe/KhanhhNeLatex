@@ -359,6 +359,9 @@ test('desktop panes fill available width while tablet and enlarged text reflow w
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
   for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }]) {
     await page.setViewportSize(viewport);
+    await expect.poll(() => page.evaluate(() =>
+      Math.abs(document.querySelector('.editor-panel').getBoundingClientRect().width -
+        document.querySelector('.preview-panel').getBoundingClientRect().width))).toBeLessThan(1);
     const sizes = await page.evaluate(() => {
       const box = selector => document.querySelector(selector).getBoundingClientRect();
       const editor = box('.editor-panel'), preview = box('.preview-panel'), sidebar = box('.sidebar'), pdf = box('.pdf-area');

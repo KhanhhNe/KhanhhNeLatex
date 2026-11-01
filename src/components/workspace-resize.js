@@ -128,12 +128,15 @@ export default function useWorkspaceResize(enabled) {
     observer.observe(root);
     desktop.addEventListener('change', resize);
     window.addEventListener('resize', resize);
+    const blur = () => finish(true);
+    window.addEventListener('blur', blur);
     apply();
     return () => {
       finish(true);
       observer.disconnect();
       desktop.removeEventListener('change', resize);
       window.removeEventListener('resize', resize);
+      window.removeEventListener('blur', blur);
       listeners.forEach(remove => remove());
       cancelAnimationFrame(frame);
     };
