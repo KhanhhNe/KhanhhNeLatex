@@ -16,9 +16,14 @@ for (const [width, height] of [[1920, 1080], [1366, 768], [390, 844], [844, 390]
         const style = getComputedStyle(element);
         return { size: parseFloat(style.fontSize), line: parseFloat(style.lineHeight) };
       });
-      const originalSize = width > 1050 ? 14 : 16;
-      expect(await titleSize()).toBe(originalSize);
-      expect(await metrics(fallback)).toEqual({ size: originalSize, line: originalSize * 1.5 });
+      const desktop = width > 1050;
+      const editorSize = desktop ? 13 : 14;
+      const titleBaseSize = desktop ? 14 : 16;
+      expect(await titleSize()).toBe(titleBaseSize);
+      expect(await metrics(fallback)).toEqual({
+        size: desktop ? editorSize : 16,
+        line: editorSize * 1.5,
+      });
       await fallback.fill('fallback stays the same size');
       await fallback.press('Control+End');
       release();
@@ -28,12 +33,13 @@ for (const [width, height] of [[1920, 1080], [1366, 768], [390, 844], [844, 390]
       await expectSource(page, 'fallback stays the same size after handoff');
       for (const rootSize of [16, 20, 16]) {
         await page.evaluate(size => { document.documentElement.style.fontSize = `${size}px`; }, rootSize);
-        const expected = originalSize * rootSize / 16;
+        const expected = editorSize * rootSize / 16;
         await expect.poll(async () => (await metrics(page.locator('.view-lines'))).size).toBe(expected);
-        expect(await titleSize()).toBe(expected);
+        expect(await titleSize()).toBe(titleBaseSize * rootSize / 16);
         expect((await metrics(page.locator('.view-lines'))).line).toBe(Math.round(expected * 1.5));
         expect((await metrics(page.locator('.line-numbers').first())).size).toBe(expected);
         expect((await metrics(page.locator('.monaco-editor').first())).size).toBe(expected);
+        expect((await metrics(sourceEditor(page))).size).toBe(desktop ? expected : 16);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       }
       if (width > 1050) {
@@ -44,9 +50,9 @@ for (const [width, height] of [[1920, 1080], [1366, 768], [390, 844], [844, 390]
           const host = await page.locator('.latex-editor-host').boundingBox();
           return Math.abs(editor.width - host.width);
         }).toBeLessThan(2);
-        expect((await metrics(page.locator('.view-lines'))).size).toBe(await titleSize());
+        expect((await metrics(page.locator('.view-lines'))).size).toBe(editorSize);
       } else {
-        expect((await metrics(sourceEditor(page))).size).toBeGreaterThanOrEqual(16);
+        expect((await metrics(sourceEditor(page))).size).toBe(16);
       }
     } finally { release(); }
   });
