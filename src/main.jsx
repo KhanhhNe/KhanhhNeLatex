@@ -9,6 +9,7 @@ import Icon from './components/Icon.jsx';
 import PdfPreview from './components/PdfPreview.jsx';
 import useWorkspaceResize from './components/workspace-resize.js';
 import { mergeDocuments } from './document-list.js';
+import { documentPath, documentRoute, newDocumentCode, validDocumentCode } from './document-url.js';
 import './style.css';
 
 const starter = String.raw`\documentclass[11pt]{article}
@@ -48,7 +49,7 @@ The Gaussian integral is
 \end{document}
 `;
 const makeDraft = (source = starter, title = 'Untitled paper') => ({
-  id: crypto.randomUUID(), title, source, updated_at: Date.now(), cloudId: null, revision: null, owner: null, dirty: true,
+  id: crypto.randomUUID(), code: newDocumentCode(), title, source, updated_at: Date.now(), cloudId: null, revision: null, owner: null, dirty: true,
 });
 const elapsed = milliseconds => milliseconds < 1000 ? `${Math.round(milliseconds)} ms` : `${(milliseconds / 1000).toFixed(2)} s`;
 function samePdf(first, second) {
@@ -63,7 +64,15 @@ function App() {
   const [cloud, setCloud] = useState([]);
   const [saveState, setSaveState] = useState('Loading local drafts...');
   const [error, setError] = useState('');
-  const [view, setView] = useState(() => location.hash === '#workspace' ? 'workspace' : 'projects');
+  const [view, setView] = useState(() => documentRoute(location.pathname) ? 'permalink' : location.hash === '#workspace' ? 'workspace' : 'projects');
+  const [localReady, setLocalReady] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [routeVersion, setRouteVersion] = useState(0);
+  const [routeError, setRouteError] = useState('');
+  const localDocuments = useRef(documents);
+  localDocuments.current = documents;
+  const visibleView = useRef(view);
+  visibleView.current = view;
   const sizing = useWorkspaceResize(view === 'workspace');
   const [auth, setAuth] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -110,12 +119,18 @@ function App() {
   account.current = user;
 
   function notice(reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
-  function showWorkspace() {
-    history.replaceState(null, '', '#workspace');
+  function showWorkspace(document = active.current, navigation = 'push') {
+    if (!document) return;
+    const path = documentPath(document);
+    if (navigation !== 'none' && location.pathname + location.search + location.hash !== path)
+      history[navigation === 'replace' ? 'replaceState' : 'pushState'](null, '', path);
+    setRouteError('');
     setView('workspace');
   }
-  function showProjects() {
-    history.replaceState(null, '', location.pathname + location.search);
+  function showProjects(navigation = 'push') {
+    selectionRequest.current++;
+    if (navigation !== 'none' && location.pathname + location.search + location.hash !== '/')
+      history.pushState(null, '', '/');
     setView('projects');
     if (compiler.current.active) cancelCompile();
     else compiler.current.cancel();
@@ -189,6 +204,7 @@ function App() {
     const next = { ...active.current, ...patch, dirty: true, updated_at: Date.now() };
     active.current = next;
     setCurrent(next);
+    if ('title' in patch && view === 'workspace') showWorkspace(next, 'replace');
     scheduleCloud(next);
     pending.current = true;
     setSaveState('Saving on this device...');
@@ -199,10 +215,10 @@ function App() {
       scheduleLive();
     }
   }
-  async function select(document, force = false) {
-    showWorkspace();
+  async function select(document, force = false, navigation = 'push') {
     const selection = ++selectionRequest.current;
     if (!force && document.id === active.current?.id) {
+      showWorkspace(active.current, navigation);
       setSidebar(false);
       if (!shownPdf.current && !compiler.current.active) compile({ reveal: false });
       return;
@@ -210,6 +226,7 @@ function App() {
     try {
       await flush();
       if (selection !== selectionRequest.current) return;
+      showWorkspace(document, navigation);
       clearTimeout(liveTimer.current);
       discardPendingViewer();
       compileRequest.current++;
@@ -235,10 +252,15 @@ function App() {
       setSaveState(persisted.current.has(document) ? savedLabel(document) : 'Saving on this device...');
       compile({ reveal: false });
       await persist(document);
-    } catch { /* The visible save error keeps the unsaved draft open. */ }
+    } catch (reason) {
+      notice(reason);
+      if (active.current) showWorkspace(active.current, 'replace');
+      else setRouteError(reason.message);
+    }
   }
   async function newDocument(source, title) {
     const document = makeDraft(source, title);
+    document.code = newDocumentCode(new Set(documents.map(item => item.code)));
     try { await select(document); }
     catch (reason) { notice(reason); }
   }
@@ -264,9 +286,9 @@ function App() {
       setCurrent(document);
       if (document.dirty) scheduleCloud(document);
       setDocuments(list.length ? list : [document]);
+      setLocalReady(true);
       setSaveState('Saved on this device');
-      if (view === 'workspace') compile({ reveal: false });
-    }).catch(notice);
+    }).catch(reason => { notice(reason); setRouteError(reason.message); });
     api('/me').then(data => {
       if (!disposed) {
         account.current = data.user;
@@ -275,7 +297,12 @@ function App() {
       }
     }).catch(reason => {
       if (!reason.message.startsWith('Sign in') && !reason.message.startsWith('Session expired')) notice(reason);
-    });
+    }).finally(() => { if (!disposed) setAuthReady(true); });
+    const popstate = () => {
+      selectionRequest.current++;
+      setRouteVersion(version => version + 1);
+    };
+    window.addEventListener('popstate', popstate);
     const unload = event => {
       if (pending.current) { event.preventDefault(); event.returnValue = ''; }
     };
@@ -294,9 +321,63 @@ function App() {
       if (pdfRef.current) URL.revokeObjectURL(pdfRef.current);
       for (const url of retiredUrls.current) if (url) URL.revokeObjectURL(url);
       window.removeEventListener('beforeunload', unload);
+      window.removeEventListener('popstate', popstate);
       document.removeEventListener('visibilitychange', hidden);
     };
   }, []);
+  useEffect(() => {
+    if (!localReady || !authReady) return;
+    const pathname = location.pathname;
+    const route = documentRoute(pathname);
+    const request = ++selectionRequest.current;
+    let disposed = false;
+    const stillCurrent = () => !disposed && request === selectionRequest.current && location.pathname === pathname;
+    async function resolve() {
+      if (!route) {
+        if (location.hash === '#workspace') await select(active.current, false, 'replace');
+        else {
+          await flush();
+          if (stillCurrent()) showProjects('none');
+        }
+        return;
+      }
+      setView('permalink');
+      setRouteError('');
+      compiler.current.cancel();
+      if (!route.code) { setRouteError('Document not found.'); return; }
+      const local = localDocuments.current.find(document => document.code === route.code);
+      if (local) { await select(local, false, 'replace'); return; }
+      if (!account.current) { setRouteError('Sign in to open this private document, or return to your projects.'); return; }
+      const owner = account.current.id;
+      const { document } = await api(`/documents/by-code/${route.code}`);
+      if (!stillCurrent() || account.current?.id !== owner) return;
+      const cached = localDocuments.current.find(item => item.cloudId === document.id && item.owner === owner);
+      const next = cached?.dirty ? { ...cached, code: document.code } : {
+        ...document, id: cached?.id || crypto.randomUUID(), cloudId: document.id, owner, dirty: false,
+      };
+      await select(next, true, 'replace');
+    }
+    resolve().catch(reason => {
+      if (stillCurrent()) { setRouteError(reason.message); notice(reason); }
+    });
+    return () => { disposed = true; };
+  }, [localReady, authReady, routeVersion, user?.id]);
+  useEffect(() => {
+    if (!user) return;
+    for (const document of documents) {
+      const remote = document.owner === user.id && cloud.find(item => item.id === document.cloudId);
+      if (!remote?.code || remote.code === document.code) continue;
+      const snapshot = active.current?.id === document.id ? active.current : document;
+      const next = { ...snapshot, code: remote.code };
+      if (active.current?.id === document.id) {
+        active.current = next;
+        setCurrent(next);
+        if (view === 'workspace') showWorkspace(next, 'replace');
+      }
+      cloudSnapshots.current.set(next.id, next);
+      persist(next).catch(() => {});
+    }
+  }, [cloud, documents, user?.id]);
   useEffect(() => {
     if (view !== 'workspace') return;
     let disposed = false;
@@ -422,14 +503,18 @@ function App() {
         }, 'PUT');
         saved = { ...snapshot, revision: data.revision };
       } else {
-        const { document } = await api('/documents', { title: snapshot.title, source: snapshot.source });
-        saved = { ...snapshot, cloudId: document.id, revision: document.revision, owner: owner.id };
+        const { document } = await api('/documents', { title: snapshot.title, source: snapshot.source, code: snapshot.code });
+        if (!validDocumentCode(document.code)) throw new Error('The account response is missing a valid document permalink. Your device draft is kept.');
+        saved = { ...snapshot, code: document.code, cloudId: document.id, revision: document.revision, owner: owner.id };
       }
       cloudTimings.current.set(snapshot.id, performance.now() - started);
       const latest = active.current?.id === snapshot.id ? active.current : cloudSnapshots.current.get(snapshot.id);
-      const next = { ...latest, cloudId: saved.cloudId, owner: owner.id, revision: saved.revision, dirty: latest !== snapshot };
+      const next = { ...latest, code: saved.code, cloudId: saved.cloudId, owner: owner.id, revision: saved.revision, dirty: latest !== snapshot };
       cloudSnapshots.current.set(next.id, next);
-      if (active.current?.id === next.id) { active.current = next; setCurrent(next); }
+      if (active.current?.id === next.id) {
+        active.current = next; setCurrent(next);
+        if (visibleView.current === 'workspace') showWorkspace(next, 'replace');
+      }
       await persist(next);
       if (account.current?.id === owner.id) await refreshCloud();
       if (next.dirty && account.current?.id === owner.id) scheduleCloud(next);
@@ -457,7 +542,8 @@ function App() {
       const local = active.current?.cloudId === item.id && active.current.owner === user.id
         ? active.current : documents.find(doc => doc.cloudId === item.id && doc.owner === user.id);
       if (local?.dirty && !window.confirm('Replace this device draft with the cloud version? Export the local draft first if you need it.')) return;
-      const next = { ...document, id: local?.id || crypto.randomUUID(), updated_at: document.updated_at ?? Date.now(), cloudId: document.id, owner: user.id, dirty: false };
+      const next = { ...document,
+        id: local?.id || crypto.randomUUID(), updated_at: document.updated_at ?? Date.now(), cloudId: document.id, owner: user.id, dirty: false };
       await select(next, true);
     } catch (reason) { notice(reason); }
   }
@@ -523,12 +609,17 @@ function App() {
     <div className="app-content" inert={auth || showHelp ? true : undefined}>
     {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
     <input ref={fileInput} type="file" accept=".tex,text/plain,application/x-tex" hidden onChange={importFile} />
-    {view === 'projects' ? <ProjectsView documents={unifiedDocuments} onOpen={openDocument}
+    {view === 'permalink' ? <main className="projects-main">
+      <h1>{routeError ? 'Document unavailable' : 'Opening document...'}</h1>
+      <p role="status">{routeError || 'Loading your private document.'}</p>
+      {!user && routeError && <button className="account" onClick={() => setAuth('login')}>Sign in</button>}
+      <button className="quiet" onClick={() => showProjects()}>Your projects</button>
+    </main> : view === 'projects' ? <ProjectsView documents={unifiedDocuments} onOpen={openDocument}
       onOpenCloud={openCloud} onNew={() => newDocument()}
       onImport={() => fileInput.current.click()} username={user?.username}
-      onSignIn={() => user ? showWorkspace() : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className="workspace-view">
+      onSignIn={() => user ? select(active.current) : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className="workspace-view">
     <header className="topbar">
-      <button className="icon projects-back" aria-label="Your projects" title="Your projects" onClick={showProjects}><Icon name="back" /></button>
+      <button className="icon projects-back" aria-label="Your projects" title="Your projects" onClick={() => showProjects()}><Icon name="back" /></button>
       <button className="icon mobile-menu" aria-label="Toggle documents" title="Toggle documents" aria-expanded={sidebar} aria-controls="document-sidebar" onClick={() => setSidebar(!sidebar)}><Icon name="panel" /></button>
       <a className="brand" href="/" aria-label="KhanhhNeLatex home"><span className="brand-mark">k</span><span className="brand-name">KhanhhNeLatex</span></a>
       <div className="top-actions">

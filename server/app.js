@@ -4,6 +4,7 @@ import { and, eq, gt, lt, desc, sql } from 'drizzle-orm';
 import { users, sessions, documents, authLimits } from './schema.js';
 import { hashPassword, verifyPassword, digest, newToken, validateCredentials, validateDocument } from './security.js';
 import { googleFontMetadata } from './fonts.js';
+import { newDocumentCode, validDocumentCode } from '../src/document-url.js';
 
 const SESSION_MS = 7 * 86400000;
 const dummyHash = 'scrypt$16384$8$1$00000000000000000000000000000000$' + '0'.repeat(64);
@@ -85,30 +86,59 @@ export function createApp(env) {
     next();
   });
   app.get('/api/me', (req, res) => res.json({ user: req.user }));
+  async function ensureCode(document, ownerId) {
+    if (document.code) return document;
+    // Older deployed code may still insert rows during the expand/deploy window.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await db.run(sql`UPDATE OR IGNORE documents SET code=${newDocumentCode()}
+        WHERE id=${document.id} AND user_id=${ownerId} AND code IS NULL`);
+      const saved = await db.select({ code: documents.code }).from(documents)
+        .where(and(eq(documents.id, document.id), eq(documents.user_id, ownerId))).get();
+      if (saved?.code) return { ...document, code: saved.code };
+    }
+    throw new Error('Could not allocate document code.');
+  }
   app.post('/api/logout', async (req, res) => {
     await db.delete(sessions).where(eq(sessions.token_hash, req.sessionHash)).run();
     res.set('Set-Cookie', cookie('', req.secure, 0)).json({ ok: true });
   });
   app.get('/api/documents', async (req, res) => {
-    const list = await db.select({ id: documents.id, title: documents.title, revision: documents.revision, updated_at: documents.updated_at })
+    const list = await db.select({ id: documents.id, code: documents.code, title: documents.title, revision: documents.revision, updated_at: documents.updated_at })
       .from(documents).where(eq(documents.user_id, req.user.id)).orderBy(desc(documents.updated_at)).limit(100);
-    res.json({ documents: list });
+    res.json({ documents: await Promise.all(list.map(document => ensureCode(document, req.user.id))) });
   });
-  app.get('/api/documents/:id', async (req, res) => {
-    const document = await db.select({ id: documents.id, title: documents.title, source: documents.source, revision: documents.revision, updated_at: documents.updated_at })
-      .from(documents).where(and(eq(documents.id, req.params.id), eq(documents.user_id, req.user.id))).get();
+  app.get('/api/documents/by-code/:code', async (req, res) => {
+    if (!validDocumentCode(req.params.code)) return res.status(404).json({ error: 'Document not found.' });
+    const document = await db.select({
+      id: documents.id, code: documents.code, title: documents.title, source: documents.source,
+      revision: documents.revision, updated_at: documents.updated_at,
+    }).from(documents).where(and(eq(documents.code, req.params.code), eq(documents.user_id, req.user.id))).get();
     if (!document) return res.status(404).json({ error: 'Document not found.' });
     res.json({ document });
+  });
+  app.get('/api/documents/:id', async (req, res) => {
+    const document = await db.select({ id: documents.id, code: documents.code, title: documents.title, source: documents.source, revision: documents.revision, updated_at: documents.updated_at })
+      .from(documents).where(and(eq(documents.id, req.params.id), eq(documents.user_id, req.user.id))).get();
+    if (!document) return res.status(404).json({ error: 'Document not found.' });
+    res.json({ document: await ensureCode(document, req.user.id) });
   });
   app.post('/api/documents', async (req, res) => {
     const error = validateDocument(req.body);
     if (error) return res.status(400).json({ error });
-    const document = { id: crypto.randomUUID(), title: req.body.title.trim(), source: req.body.source, revision: 1, updated_at: Date.now() };
-    const result = await db.run(sql`INSERT INTO documents (id,user_id,title,source,revision,updated_at)
-      SELECT ${document.id},${req.user.id},${document.title},${document.source},1,${document.updated_at}
-      WHERE (SELECT COUNT(*) FROM documents WHERE user_id=${req.user.id})<100`);
-    if (!result.meta.changes) return res.status(409).json({ error: 'Limit of 100 cloud documents reached. Export or delete a document first.' });
-    res.status(201).json({ document });
+    if (req.body.code !== undefined && !validDocumentCode(req.body.code))
+      return res.status(400).json({ error: 'Document code must contain 8 URL-safe characters.' });
+    const document = { id: crypto.randomUUID(), code: req.body.code || newDocumentCode(),
+      title: req.body.title.trim(), source: req.body.source, revision: 1, updated_at: Date.now() };
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const result = await db.run(sql`INSERT OR IGNORE INTO documents (id,code,user_id,title,source,revision,updated_at)
+        SELECT ${document.id},${document.code},${req.user.id},${document.title},${document.source},1,${document.updated_at}
+        WHERE (SELECT COUNT(*) FROM documents WHERE user_id=${req.user.id})<100`);
+      if (result.meta.changes) return res.status(201).json({ document });
+      const collision = await db.select({ id: documents.id }).from(documents).where(eq(documents.code, document.code)).get();
+      if (!collision) return res.status(409).json({ error: 'Limit of 100 cloud documents reached. Export or delete a document first.' });
+      document.code = newDocumentCode();
+    }
+    throw new Error('Could not allocate document code.');
   });
   app.put('/api/documents/:id', async (req, res) => {
     const error = validateDocument(req.body);
