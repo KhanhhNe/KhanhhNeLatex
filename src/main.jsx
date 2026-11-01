@@ -95,6 +95,14 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [live, setLive] = useState(false);
   const [engineState, setEngineState] = useState('Preparing browser engine...');
+  const [menu, setMenu] = useState(false);
+  const [chromeHidden, setChromeHidden] = useState(false);
+  const [logShown, setLogShown] = useState(false);
+  const menuDialog = useRef(null);
+  const moreButton = useRef(null);
+  const previewPanel = useRef(null);
+  const compileLog = useRef(null);
+  const sidebarElement = useRef(null);
   const fileInput = useRef(null);
   const active = useRef(null);
   const timer = useRef(null);
@@ -893,6 +901,94 @@ function App() {
     window.addEventListener('keydown', keys);
     return () => window.removeEventListener('keydown', keys);
   }, []);
+  const previewSettled = Boolean(pdf) && !stale && !compiling && !pendingPdf && compileState.startsWith('Compiled in your browser');
+  const showPreviewBar = !mobile || !previewSettled || logShown;
+  const immersive = mobile && view === 'workspace' && tab === 'preview' && Boolean(pdf) && !menu && !sidebar;
+  useEffect(() => { if (!immersive) setChromeHidden(false); }, [immersive]);
+  useEffect(() => { setChromeHidden(false); }, [compileState, stale]);
+  useEffect(() => { if (compiling) setLogShown(false); }, [compiling]);
+  useEffect(() => {
+    // Passive observers only: the PDF viewer owns scrolling, panning and momentum.
+    const panel = previewPanel.current;
+    if (!panel || !immersive) return;
+    let anchor = null, tap = null;
+    const scroller = target => target instanceof Element ? target.closest('.pdf-viewer:not(.pending) .pdf-viewport') : null;
+    const scroll = event => {
+      if (scroller(event.target) !== event.target) return;
+      const top = event.target.scrollTop;
+      if (top <= 24) { anchor = top; setChromeHidden(false); return; }
+      if (anchor === null) { anchor = top; return; }
+      if (Math.abs(top - anchor) < 12) return;
+      setChromeHidden(top > anchor);
+      anchor = top;
+    };
+    const down = event => {
+      tap = event.isPrimary && scroller(event.target) ? { id: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp } : null;
+    };
+    const up = event => {
+      if (tap?.id === event.pointerId && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) < 10 && event.timeStamp - tap.time < 350)
+        setChromeHidden(hidden => !hidden);
+      tap = null;
+    };
+    const cancel = () => { tap = null; };
+    const options = { capture: true, passive: true };
+    panel.addEventListener('scroll', scroll, options);
+    panel.addEventListener('pointerdown', down, options);
+    panel.addEventListener('pointerup', up, options);
+    panel.addEventListener('pointercancel', cancel, options);
+    return () => {
+      panel.removeEventListener('scroll', scroll, options);
+      panel.removeEventListener('pointerdown', down, options);
+      panel.removeEventListener('pointerup', up, options);
+      panel.removeEventListener('pointercancel', cancel, options);
+    };
+  }, [immersive]);
+  useEffect(() => {
+    const dialog = menuDialog.current;
+    if (!dialog) return;
+    if (menu && !dialog.open) dialog.showModal();
+    if (!menu && dialog.open) dialog.close();
+  }, [menu]);
+  useEffect(() => { if (!mobile) { setMenu(false); setSidebar(false); } }, [mobile]);
+  const sidebarWasOpen = useRef(false);
+  useEffect(() => {
+    if (mobile && sidebar) sidebarElement.current?.querySelector('button:not(:disabled)')?.focus();
+    else if (mobile && sidebarWasOpen.current) moreButton.current?.focus();
+    sidebarWasOpen.current = sidebar;
+  }, [sidebar, mobile]);
+  useEffect(() => {
+    if (!logShown || !compileLog.current) return;
+    compileLog.current.open = true;
+    compileLog.current.querySelector('summary')?.focus();
+  }, [logShown]);
+  function fromMenu(action) {
+    return () => {
+      if (menuDialog.current?.open) menuDialog.current.close();
+      setMenu(false);
+      moreButton.current?.focus();
+      action();
+    };
+  }
+  async function signOut() {
+    try {
+      await persist();
+      await api('/logout', {});
+      account.current = null;
+      cloudRequest.current++;
+      setUser(null);
+      setCloud([]);
+    }
+    catch (reason) { notice(reason); }
+  }
+  const exportTex = () => download(active.current.source, `${active.current.title || 'document'}.tex`, 'text/plain;charset=utf-8');
+  const exportPdf = () => {
+    const latest = generatedPdf.current;
+    download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
+  };
+  const previewStatus = <div className="preview-status">
+    <span className="preview-status-reserve" aria-hidden="true" />
+    <div className="preview-status-message" role="status" aria-atomic="true"><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
+  </div>;
 
   return <div className="app">
     <div className="app-content" inert={auth || showHelp ? true : undefined}>
@@ -906,10 +1002,9 @@ function App() {
     </main> : view === 'projects' ? <ProjectsView documents={unifiedDocuments} onOpen={openDocument}
       onNew={() => newDocument()}
       onImport={() => fileInput.current.click()} username={user?.username}
-      onSignIn={() => user ? select(active.current) : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className={`workspace-view ${tab === 'source' ? 'editing' : 'reading'}`}>
-    <header className="topbar">
+      onSignIn={() => user ? select(active.current) : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className={`workspace-view ${tab === 'source' ? 'editing' : 'reading'}${chromeHidden ? ' chrome-hidden' : ''}`}>
+    {!mobile && <header className="topbar">
       <button className="icon projects-back" aria-label="Your projects" title="Your projects" onClick={() => showProjects()}><Icon name="back" /></button>
-      <button className="icon mobile-menu" aria-label="Toggle documents" title="Toggle documents" aria-expanded={sidebar} aria-controls="document-sidebar" onClick={() => setSidebar(!sidebar)}><Icon name="panel" /></button>
       <button className="icon desktop-sidebar-toggle" aria-label="Toggle documents" title={desktopSidebarHidden ? 'Show documents' : 'Hide documents'} aria-expanded={!desktopSidebarHidden} aria-controls="document-sidebar" onClick={() => {
         const hidden = !desktopSidebarHidden;
         setDesktopSidebarHidden(hidden);
@@ -919,22 +1014,12 @@ function App() {
       <a className="brand" href="/" aria-label="KhanhhNeLatex home"><span className="brand-mark">k</span><span className="brand-name">KhanhhNeLatex</span></a>
       <div className="top-actions">
         <button className="quiet header-help" aria-label="Help" title="Help" onClick={() => setShowHelp(true)}><Icon name="help" /></button>
-        {user ? <button className="account" aria-label={`Sign out ${user.username}`} title={`Sign out ${user.username}`} disabled={busy} onClick={async () => {
-          try {
-            await persist();
-            await api('/logout', {});
-            account.current = null;
-            cloudRequest.current++;
-            setUser(null);
-            setCloud([]);
-          }
-          catch (reason) { notice(reason); }
-        }}><Icon name="user" /><span className="account-name">{user.username}</span><span>Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}><Icon name="user" />Sign in</button>}
+        {user ? <button className="account" aria-label={`Sign out ${user.username}`} title={`Sign out ${user.username}`} disabled={busy} onClick={signOut}><Icon name="user" /><span className="account-name">{user.username}</span><span>Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}><Icon name="user" />Sign in</button>}
       </div>
-    </header>
+    </header>}
     <div className={`workspace ${desktopSidebarHidden ? 'sidebar-hidden' : ''}`} ref={sizing.workspace}>
-      <aside id="document-sidebar" className={`sidebar ${sidebar ? 'open' : ''}`}>
-        <div className="sidebar-heading"><span>Documents</span><Icon name="panel" /></div>
+      <aside id="document-sidebar" ref={sidebarElement} className={`sidebar ${sidebar ? 'open' : ''}`} aria-label={mobile ? 'Documents' : undefined}>
+        <div className="sidebar-heading"><span>Documents</span>{mobile ? <button className="sidebar-close" aria-label="Close documents" title="Close documents" onClick={() => setSidebar(false)}><Icon name="close" /></button> : <Icon name="panel" />}</div>
         <button className="new-document" onClick={() => newDocument()} disabled={busy}><Icon name="plus" /><span>New document</span></button>
         <nav className="document-list" aria-label="Documents">{unifiedDocuments.map(document => {
           const edited = new Date(document.updated_at);
@@ -960,11 +1045,13 @@ function App() {
           <button className="delete-button" onClick={remove} disabled={!current || busy}>Delete current document</button>
         </div>
       </aside>
+      {mobile && sidebar && <div className="drawer-backdrop" aria-hidden="true" onClick={() => setSidebar(false)} />}
       <div ref={sizing.sidebarHandle} className="pane-separator sidebar-handle" role="separator" tabIndex={0}
         aria-label="Document sidebar width" aria-orientation="vertical" aria-controls="document-sidebar"
         title="Drag or use arrow keys to resize. Enter or double-click to reset." />
-      <main className="main">
-        <div className="document-toolbar">
+      <main className="main" inert={mobile && sidebar ? true : undefined}>
+        <div className="document-toolbar" onFocus={() => setChromeHidden(false)}>
+          {mobile && <button className="icon projects-back" aria-label="Your projects" title="Your projects" onClick={() => showProjects()}><Icon name="back" /></button>}
           <div className="document-title">
             <span className="document-title-field">
               <span className="document-title-measure" aria-hidden="true">{`${current?.title || ''} `}</span>
@@ -974,7 +1061,7 @@ function App() {
                   persist().catch(() => {});
                 }} />
             </span>
-            <span className="save-state" role="status" aria-atomic="true"><i />{saveState}</span>
+            <span className="save-state" role="status" aria-atomic="true" title={saveState}><i /><span className="save-text">{saveState}</span></span>
           </div>
           <div className="mobile-tabs" role="group" aria-label="Document mode">
             <button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>Read</button>
@@ -984,27 +1071,27 @@ function App() {
             <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} title={compiling ? 'Cancel compilation' : 'Compile (Ctrl/Cmd+Enter)'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>
               {compiling ? <span className="spinner" /> : <Icon name="refresh" />}<span className="action-label">{compiling ? 'Cancel' : mobile && tab === 'source' ? 'Compile & read' : 'Compile'}</span>
             </button>
-            <button className="quiet" aria-label="Export .tex" title="Export .tex" disabled={!current} onClick={() => download(active.current.source, `${active.current.title || 'document'}.tex`, 'text/plain;charset=utf-8')}><Icon name="download" /><span>.tex</span></button>
-            <button className="quiet" aria-label="Export PDF" title="Export PDF" disabled={!pdf} onClick={() => {
-              const latest = generatedPdf.current;
-              download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
-            }}><Icon name="download" /><span>PDF</span></button>
-            <button className="save-button" aria-label={busy ? 'Saving...' : 'Save to account'} title="Save to account" disabled={!current || busy} onClick={sync}><Icon name="cloud" /><span className="action-label">{busy ? 'Saving...' : 'Save'}</span></button>
-            {!mobile && desktopSidebarHidden && <>
-              <button className="quiet" aria-label="More document actions" title="More document actions" popoverTarget="document-overflow"><Icon name="more" /></button>
-              <div id="document-overflow" className="document-overflow" popover="auto" role="group" aria-label="Document actions" onToggle={event => {
-                if (event.nativeEvent.newState !== 'open') return;
-                const menu = event.currentTarget;
-                const trigger = menu.previousElementSibling.getBoundingClientRect();
-                menu.style.top = `${Math.max(8, Math.min(trigger.bottom + 4, innerHeight - menu.offsetHeight - 8))}px`;
-              }} onClick={event => {
-                if (event.target.closest('button')) event.currentTarget.hidePopover();
-              }}>
-                <button disabled={busy} onClick={() => newDocument()}><Icon name="plus" />New document</button>
-                <button disabled={busy} onClick={() => fileInput.current.click()}><Icon name="upload" />Import .tex file</button>
-                <button className="delete-button" disabled={!current || busy} onClick={remove}>Delete current document</button>
-              </div>
+            {!mobile && <>
+              <button className="quiet" aria-label="Export .tex" title="Export .tex" disabled={!current} onClick={exportTex}><Icon name="download" /><span>.tex</span></button>
+              <button className="quiet" aria-label="Export PDF" title="Export PDF" disabled={!pdf} onClick={exportPdf}><Icon name="download" /><span>PDF</span></button>
+              <button className="save-button" aria-label={busy ? 'Saving...' : 'Save to account'} title="Save to account" disabled={!current || busy} onClick={sync}><Icon name="cloud" /><span className="action-label">{busy ? 'Saving...' : 'Save'}</span></button>
+              {desktopSidebarHidden && <>
+                <button className="quiet" aria-label="More document actions" title="More document actions" popoverTarget="document-overflow"><Icon name="more" /></button>
+                <div id="document-overflow" className="document-overflow" popover="auto" role="group" aria-label="Document actions" onToggle={event => {
+                  if (event.nativeEvent.newState !== 'open') return;
+                  const menu = event.currentTarget;
+                  const trigger = menu.previousElementSibling.getBoundingClientRect();
+                  menu.style.top = `${Math.max(8, Math.min(trigger.bottom + 4, innerHeight - menu.offsetHeight - 8))}px`;
+                }} onClick={event => {
+                  if (event.target.closest('button')) event.currentTarget.hidePopover();
+                }}>
+                  <button disabled={busy} onClick={() => newDocument()}><Icon name="plus" />New document</button>
+                  <button disabled={busy} onClick={() => fileInput.current.click()}><Icon name="upload" />Import .tex file</button>
+                  <button className="delete-button" disabled={!current || busy} onClick={remove}>Delete current document</button>
+                </div>
+              </>}
             </>}
+            {mobile && <button ref={moreButton} className="more-button" aria-label="More actions" title="More actions" aria-haspopup="dialog" aria-expanded={menu} aria-controls="workspace-menu" onClick={() => setMenu(true)}><Icon name="more" /></button>}
           </div>
         </div>
         <div className="panels" ref={sizing.panels}>
@@ -1015,18 +1102,14 @@ function App() {
                 onChange={(source, changes, before) => update({ source }, changes, before)}
                 onSave={() => compile()} onCompile={() => compile()} />}
             </div>
-            <div className="editor-footer"><span>main.tex <span className="footer-separator">·</span> LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span>
-              {mobile && <label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label>}
-            </div>
+            {!mobile && <div className="editor-footer"><span>main.tex <span className="footer-separator">·</span> LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>}
           </section>
           <div ref={sizing.splitHandle} className="pane-separator" role="separator" tabIndex={0}
             aria-label="Source editor width" aria-orientation="vertical" aria-controls="source-panel"
             title="Drag or use arrow keys to resize. Enter or double-click to reset." />
-          <section id="preview-panel" className={`preview-panel ${tab === 'preview' ? 'mobile-active' : ''}`} aria-label="PDF preview">
-            <div className="preview-status">
-              <span className="preview-status-reserve" aria-hidden="true" />
-              <div className="preview-status-message" role="status" aria-atomic="true"><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
-            </div>
+          <section id="preview-panel" ref={previewPanel} className={`preview-panel ${tab === 'preview' ? 'mobile-active' : ''}`} aria-label="PDF preview"
+            onFocus={event => { if (event.target.closest('.pdf-zoom-toolbar')) setChromeHidden(false); }}>
+            {!mobile && previewStatus}
             <div className="pdf-area">{pdf ? <div className="pdf-stack">{[pdf, pendingPdf].filter(Boolean).map(viewer =>
               <PdfPreview key={viewer.url} viewer={viewer} pending={viewer.url !== pdf.url}
                 viewState={previewView}
@@ -1043,9 +1126,9 @@ function App() {
               <div className="empty-preview"><Icon name="file" />
                 <h1>{compiling ? 'Preparing preview' : 'PDF preview'}</h1><p>{compiling ? 'Typesetting your document…' : 'Compile to see your document here.'}</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}><Icon name="refresh" />Compile your document</button></div>}
             </div>
-            <div className="preview-bottom">
-              <div className="compile-log-slot"><details className="compile-log" open={compileState.includes('See compilation log.')}><summary>Compilation log</summary><pre>{log || 'No compilation log available.'}</pre></details></div>
-              <div className="preview-footer"><span title={engineState}>{engineState}</span>{!mobile && <label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label>}<button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>
+            <div className="preview-bottom" hidden={!showPreviewBar}>
+              <div className="compile-log-slot"><details ref={compileLog} className="compile-log" open={compileState.includes('See compilation log.')}><summary aria-label={mobile ? 'Compilation log' : undefined}>{mobile ? 'Log' : 'Compilation log'}</summary><pre>{log || 'No compilation log available.'}</pre></details></div>
+              {mobile ? previewStatus : <div className="preview-footer"><span title={engineState}>{engineState}</span><label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label><button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>}
             </div>
           </section>
         </div>
@@ -1053,6 +1136,37 @@ function App() {
     </div>
     </div>}
     </div>
+    {mobile && view === 'workspace' && <dialog id="workspace-menu" ref={menuDialog} className="action-sheet" aria-labelledby="workspace-menu-title"
+      onClose={() => {
+        setMenu(false);
+        if (!document.activeElement || document.activeElement === document.body || menuDialog.current?.contains(document.activeElement)) moreButton.current?.focus();
+      }}
+      onClick={event => { if (event.target === event.currentTarget) event.currentTarget.close(); }}>
+      <div className="action-sheet-body">
+        <div className="action-sheet-header">
+          <div className="action-sheet-heading">
+            <h2 id="workspace-menu-title">{current?.title || 'Document'}</h2>
+            <p><i className="status-dot" />{saveState}</p>
+          </div>
+          <button className="action-sheet-close" aria-label="Close menu" title="Close menu" onClick={() => menuDialog.current?.close()}><Icon name="close" /></button>
+        </div>
+        <div className="action-sheet-items">
+          <button onClick={fromMenu(() => setSidebar(true))} aria-controls="document-sidebar"><Icon name="panel" />Documents</button>
+          <button onClick={fromMenu(() => newDocument())} disabled={busy}><Icon name="plus" />New document</button>
+          <button onClick={fromMenu(exportTex)} disabled={!current}><Icon name="download" />Export .tex</button>
+          <button onClick={fromMenu(exportPdf)} disabled={!pdf}><Icon name="download" />Export PDF</button>
+          {pdf ? <a href={pdf.url} target="_blank" rel="noopener" onClick={() => menuDialog.current?.close()}><Icon name="external" />Open PDF</a>
+            : <button disabled><Icon name="external" />Open PDF</button>}
+          <button onClick={fromMenu(sync)} disabled={!current || busy}><Icon name="cloud" />{busy ? 'Saving...' : 'Save to account'}</button>
+          <label className="action-sheet-toggle"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} />Live preview</label>
+          <button onClick={fromMenu(() => { setTab('preview'); setLogShown(true); })}><Icon name="terminal" />Compilation log</button>
+          <button onClick={fromMenu(() => setShowHelp(true))}><Icon name="help" />Help</button>
+          {user ? <button onClick={fromMenu(signOut)} disabled={busy}><Icon name="user" />Sign out {user.username}</button>
+            : <button onClick={fromMenu(() => setAuth('login'))}><Icon name="user" />Sign in</button>}
+        </div>
+        <p className="action-sheet-status"><span>{compileState}</span><span>{engineState}</span></p>
+      </div>
+    </dialog>}
     {auth && <AuthDialog mode={auth} setMode={setAuth} onClose={() => setAuth(null)} onSuccess={async signedIn => {
       account.current = signedIn;
       setUser(signedIn); setAuth(null);

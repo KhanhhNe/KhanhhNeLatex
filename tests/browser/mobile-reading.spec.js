@@ -2,6 +2,7 @@ import { test, expect, devices, chromium, webkit } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { editorReady, sourceEditor } from './source-editor.js';
+import { mobileAction } from './mobile-menu.js';
 
 for (const browserType of [chromium, webkit]) {
   for (const [orientation, width, height] of [['portrait', 390, 844], ['landscape', 844, 390]]) {
@@ -27,7 +28,7 @@ for (const browserType of [chromium, webkit]) {
         expect(viewport.y + viewport.height).toBeLessThanOrEqual(height);
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
         for (const name of ['Export .tex', 'Export PDF']) {
-          const button = page.getByRole('button', { name, exact: true });
+          const button = await mobileAction(page, name);
           await expect(button).toBeInViewport();
           const box = await button.boundingBox();
           expect(box.height).toBeGreaterThanOrEqual(44);
@@ -35,8 +36,25 @@ for (const browserType of [chromium, webkit]) {
           await button.click();
           const bytes = await readFile(await (await waiting).path());
           expect(bytes.subarray(0, 5).toString()).toBe(name === 'Export PDF' ? '%PDF-' : '\\docu');
+          await expect(page.getByRole('button', { name: 'More actions' })).toBeFocused();
         }
-        await expect(page.getByRole('link', { name: 'Open PDF', exact: true })).toBeInViewport();
+        await expect(await mobileAction(page, 'Open PDF', 'link')).toBeInViewport();
+        await page.keyboard.press('Escape');
+        await expect(page.locator('#workspace-menu')).not.toHaveAttribute('open', '');
+        // A tap on the page hides the toolbar and zoom controls for reading; another tap restores them.
+        const toolbar = page.locator('.document-toolbar');
+        const tapCenter = async () => {
+          const area = await page.locator('.pdf-viewport').boundingBox();
+          await page.touchscreen.tap(area.x + area.width / 2, area.y + area.height / 2);
+        };
+        await tapCenter();
+        await expect(page.locator('.workspace-view')).toHaveClass(/chrome-hidden/);
+        await expect.poll(async () => (await toolbar.boundingBox()).y + (await toolbar.boundingBox()).height).toBeLessThanOrEqual(1);
+        expect(await page.locator('.pdf-viewport').boundingBox()).toMatchObject({ y: viewport.y, height: viewport.height });
+        await tapCenter();
+        await expect(page.locator('.workspace-view')).not.toHaveClass(/chrome-hidden/);
+        await page.getByRole('button', { name: 'More actions' }).focus();
+        await expect(page.locator('.workspace-view')).not.toHaveClass(/chrome-hidden/);
         if (process.env.MOBILE_ARTIFACTS) await page.screenshot({
           path: join(process.env.MOBILE_ARTIFACTS, `after-${browserType.name()}-${orientation}.png`),
         });
@@ -44,7 +62,8 @@ for (const browserType of [chromium, webkit]) {
         await page.getByRole('button', { name: 'Edit', exact: true }).click();
         await editorReady(page);
         await expect(page.getByRole('button', { name: 'Compile', exact: true })).toHaveText('Compile & read');
-        await expect(page.getByRole('button', { name: 'Save to account' })).toBeVisible();
+        await expect(await mobileAction(page, 'Save to account')).toBeVisible();
+        await page.keyboard.press('Escape');
         await page.getByRole('textbox', { name: 'Document title' }).fill('Mobile reading review');
         await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveAttribute('aria-pressed', 'true');
         await expect(page).toHaveURL(/\/documents\/mobile-reading-review\/[A-Za-z0-9_-]{8}$/);

@@ -1,4 +1,5 @@
 import { test, expect, chromium, webkit, devices } from '@playwright/test';
+import { mobileAction } from './mobile-menu.js';
 import { join } from 'node:path';
 import { editorReady } from './source-editor.js';
 
@@ -47,12 +48,13 @@ for (const [profile, options] of [
       await page.goto('/#workspace');
       await editorReady(page);
       await page.getByRole('textbox', { name: 'Document title', exact: true }).fill(longTitle);
-      await page.getByRole('button', { name: 'Save to account', exact: true }).click();
+      if (profile === 'desktop') await page.getByRole('button', { name: 'Save to account', exact: true }).click();
+      else await (await mobileAction(page, 'Save to account')).click();
       await expect(page.locator('.save-state')).toContainText('Saved to your account');
       const mobile = profile !== 'desktop';
       const openDrawer = async () => {
         if (mobile && !(await page.locator('#document-sidebar').isVisible())) {
-          await page.getByRole('button', { name: 'Toggle documents' }).click();
+          await (await mobileAction(page, 'Documents')).click();
         }
       };
       await openDrawer();

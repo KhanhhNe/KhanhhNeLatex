@@ -38,6 +38,15 @@ async function reachable(locator, page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(await page.evaluate(() => innerWidth));
 }
 
+async function menuAction(page, name, role = 'button') {
+  await page.getByRole('button', { name: 'More actions' }).click();
+  const sheet = page.getByRole('dialog', { name: /./ }).filter({ has: page.getByRole('button', { name: 'Close menu' }) });
+  await expect(sheet).toBeVisible();
+  const action = role === 'label' ? sheet.getByLabel(name, { exact: true }) : sheet.getByRole(role, { name, exact: true });
+  await reachable(action, page);
+  return action;
+}
+
 async function touchTargets(page) {
   const small = await page.locator('button,a,input:not(.inputarea),summary,.live-preview').evaluateAll(elements =>
     elements.filter(element => element.getClientRects().length && !element.closest('[inert]') && element.type !== 'checkbox').flatMap(element => {
@@ -96,19 +105,30 @@ for (const browserType of [chromium, webkit]) {
         await fillSource(page, 'Long source line '.repeat(200));
         await expect(page.locator('.save-state')).toContainText('Saved on this device');
         await screenshot(page, `${browserType.name()}-${state}-source`);
-        await page.getByRole('button', { name: 'Toggle documents' }).click();
+        const more = page.getByRole('button', { name: 'More actions' });
+        await more.click();
+        await expect(more).toHaveAttribute('aria-expanded', 'true');
+        await touchTargets(page);
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('button', { name: 'Close menu' })).toBeHidden();
+        await expect(more).toBeFocused();
+        await more.click();
+        await page.mouse.click(width / 2, 4);
+        await expect(page.getByRole('button', { name: 'Close menu' })).toBeHidden();
+        await (await menuAction(page, 'Documents')).click();
         await reachable(page.getByRole('button', { name: 'Delete current document' }), page);
         await page.getByRole('button', { name: 'Import .tex file', exact: true }).click();
         await page.locator('input[type=file]').setInputFiles({ name: 'bad.tex', mimeType: 'text/plain', buffer: Buffer.from([0, 255]) });
         await expect(page.locator('.error-banner')).toBeVisible();
         await page.getByRole('button', { name: 'Dismiss error' }).click();
-        await page.getByRole('button', { name: 'Toggle documents' }).click();
+        await page.getByRole('button', { name: 'Close documents' }).click();
+        await expect(page.getByRole('button', { name: 'Delete current document' })).toBeHidden();
+        await expect(more).toBeFocused();
         await page.getByRole('button', { name: 'Read', exact: true }).click();
-        await reachable(page.getByRole('button', { name: 'Help', exact: true }), page);
-        await page.getByRole('button', { name: 'Help', exact: true }).click();
+        await (await menuAction(page, 'Help')).click();
         await reachable(page.getByRole('link', { name: /Compiler credits/ }), page);
         await page.keyboard.press('Escape');
-        await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+        await (await menuAction(page, 'Sign in')).click();
         await page.getByRole('textbox', { name: 'Username' }).fill('mobile_review');
         await page.getByLabel('Password', { exact: true }).fill('review-password-only');
         await reachable(page.getByRole('dialog').getByRole('button', { name: 'Sign in', exact: true }), page);
@@ -142,7 +162,7 @@ test('mobile real PDF, recompilation, error log, cancel and exports preserve con
   await expect(page.locator('.pdf-viewer.pending')).toHaveCount(0);
   expect(await viewer.evaluate(element => ({ filter: getComputedStyle(element).filter, scheme: getComputedStyle(element).colorScheme }))).toEqual({ filter: 'none', scheme: 'light' });
   const exported = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
+  await (await menuAction(page, 'Export PDF')).click();
   const pdf = await readFile(await (await exported).path());
   expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
   if (process.env.MOBILE_ARTIFACTS) await page.waitForTimeout(1500);
@@ -155,14 +175,16 @@ test('mobile real PDF, recompilation, error log, cancel and exports preserve con
   await page.getByRole('textbox', { name: 'LaTeX source', exact: true }).press('Control+s');
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  await page.getByLabel('Live preview', { exact: true }).check();
+  await (await menuAction(page, 'Live preview', 'label')).check();
+  await page.keyboard.press('Escape');
   await fillSource(page, String.raw`\documentclass{article}\begin{document}\undefinedmobilecommand\end{document}`);
   await page.getByRole('button', { name: 'Read', exact: true }).click();
   await expect(page.locator('.compile-log')).toContainText('Undefined control sequence', { timeout: 60000 });
   await reachable(page.locator('.compile-log summary'), page);
   await screenshot(page, 'chromium-landscape-error-log');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  await page.getByLabel('Live preview', { exact: true }).uncheck();
+  await (await menuAction(page, 'Live preview', 'label')).uncheck();
+  await page.keyboard.press('Escape');
   await fillSource(page, String.raw`\documentclass{article}\begin{document}\loop\iftrue\repeat\end{document}`);
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();

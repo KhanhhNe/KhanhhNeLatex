@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mobileAction } from './mobile-menu.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { editorReady } from './source-editor.js';
@@ -200,9 +201,9 @@ test('stale widths, scaled desktop and narrow-screen tabs remain bounded without
       await expect(page.locator('#preview-panel')).toBeVisible();
       await evidence(page, `resize-${w}-preview`);
       await page.getByRole('button', { name: 'Edit', exact: true }).click();
-      await page.getByRole('button', { name: 'Toggle documents' }).click();
+      await (await mobileAction(page, 'Documents')).click();
       await expect(page.locator('#document-sidebar')).toBeVisible();
-      await page.getByRole('button', { name: 'Toggle documents' }).click();
+      await page.getByRole('button', { name: 'Close documents' }).click();
     }
   }
 });
@@ -239,9 +240,9 @@ test('desktop sidebar collapse restores pane preferences, persists and keeps mob
   await toggle.click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: 'More document actions' })).toHaveCount(0);
-  await toggle.click();
+  await (await mobileAction(page, 'Documents')).click();
   await expect(page.locator('#document-sidebar')).toBeVisible();
-  await toggle.click();
+  await page.getByRole('button', { name: 'Close documents' }).click();
   await page.setViewportSize({ width: 1366, height: 768 });
   await expect(page.locator('#document-sidebar')).toBeHidden();
   await aligned(page);

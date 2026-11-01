@@ -17,6 +17,8 @@ const paths = {
   search: 'M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0 m-2 5 6 6',
   list: 'M9 6h12 M9 12h12 M9 18h12 M3 6h1 M3 12h1 M3 18h1',
   grid: 'M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h6v6h-6z',
+  external: 'M14 4h6v6 M20 4l-9 9 M18 14v6H4V6h6',
+  terminal: 'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h3',
 };
 
 export default function Icon({ name, className = '' }) {

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mobileAction } from './mobile-menu.js';
 import { readFile } from 'node:fs/promises';
 import { sourceEditor, editorReady, fillSource, expectSource, readSource } from './source-editor.js';
 import { mergeText } from '../../src/crdt.js';
@@ -334,16 +335,22 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 76
     await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
     if (viewport.width < 1050) await page.getByRole('button', { name: 'Read', exact: true }).click();
     await expect(page.locator('.preview-toolbar,.source-toolbar')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Export .tex', exact: true })).toHaveCount(1);
+    const mobile = viewport.width < 1050;
+    if (mobile) {
+      await expect(page.getByRole('button', { name: 'More actions', exact: true })).toHaveCount(1);
+      await expect(page.locator('#workspace-menu').getByRole('button', { name: 'Export .tex', exact: true, includeHidden: true })).toHaveCount(1);
+    } else await expect(page.getByRole('button', { name: 'Export .tex', exact: true })).toHaveCount(1);
     const pdfViewport = await page.locator('.pdf-viewport').boundingBox();
     expect(pdfViewport.height).toBeGreaterThan(viewport.width === 1920 ? 850 : viewport.width === 1366 ? 540 : 530);
-    const geometry = () => page.evaluate(() => Object.fromEntries([
-      '.document-toolbar', '.preview-status', '.pdf-area', '.compile-log-slot', '.preview-footer',
-      '.document-actions .compile-button', '.document-actions .quiet', '.live-preview', '.editor-container',
-    ].map(selector => {
+    // Mobile status and log overlay the PDF only while unsettled, so they are excluded from layout geometry.
+    const selectors = mobile
+      ? ['.document-toolbar', '.pdf-area', '.document-actions .compile-button', '.more-button', '.editor-container']
+      : ['.document-toolbar', '.preview-status', '.pdf-area', '.compile-log-slot', '.preview-footer',
+        '.document-actions .compile-button', '.document-actions .quiet', '.live-preview', '.editor-container'];
+    const geometry = () => page.evaluate(selectors => Object.fromEntries(selectors.map(selector => {
       const box = document.querySelector(selector).getBoundingClientRect();
       return [selector, { x: box.x, y: box.y, width: box.width, height: box.height }];
-    })));
+    })), selectors);
     const stable = await geometry();
     const assertStable = async () => {
       expect(await geometry()).toEqual(stable);
@@ -440,10 +447,14 @@ test('mobile controls have readable text, 44px targets, labels and narrow/zoom r
   await page.getByRole('button', { name: 'Read', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: 'Live preview' })).toBeHidden();
   await checkTargets();
-  await page.getByRole('button', { name: 'Toggle documents' }).click();
-  await expect(page.getByRole('button', { name: 'Toggle documents' })).toHaveAttribute('aria-expanded', 'true');
+  const more = page.getByRole('button', { name: 'More actions' });
+  await more.click();
+  await expect(more).toHaveAttribute('aria-expanded', 'true');
   await checkTargets();
-  await page.getByRole('button', { name: 'Toggle documents' }).click();
+  await page.locator('#workspace-menu').getByRole('button', { name: 'Documents', exact: true }).click();
+  await expect(page.locator('#document-sidebar')).toBeVisible();
+  await checkTargets();
+  await page.getByRole('button', { name: 'Close documents' }).click();
   await page.setViewportSize({ width: 720, height: 600 });
   await checkTargets();
   await page.setViewportSize({ width: 320, height: 844 });
@@ -451,22 +462,20 @@ test('mobile controls have readable text, 44px targets, labels and narrow/zoom r
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.evaluate(() => { document.documentElement.style.fontSize = '34px'; });
   await checkTargets();
-  const reflow = await page.evaluate(() => {
-    const state = document.querySelector('.save-state').getBoundingClientRect();
-    return {
-      stateWidth: state.width, stateHeight: state.height,
-      overflow: ['.topbar', '.top-actions', '.document-toolbar', '.document-actions', '.mobile-tabs'].filter(selector => {
-        const el = document.querySelector(selector);
-        return el.scrollWidth > el.clientWidth + 1;
-      }),
-    };
-  });
-  expect(reflow.stateWidth).toBeGreaterThan(200);
-  expect(reflow.stateHeight).toBeLessThan(120);
+  const reflow = await page.evaluate(() => ({
+    overflow: ['.document-toolbar', '.document-actions', '.mobile-tabs'].filter(selector => {
+      const el = document.querySelector(selector);
+      return el.scrollWidth > el.clientWidth + 1;
+    }),
+  }));
   expect(reflow.overflow).toEqual([]);
+  await expect(page.locator('.save-state')).toHaveAttribute('title', /Saved/);
   await sourceEditor(page).scrollIntoViewIfNeeded();
   await expect(sourceEditor(page)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Save to account' })).toBeVisible();
+  await expect(await mobileAction(page, 'Save to account')).toBeVisible();
+  await checkTargets();
+  expect(await page.locator('#workspace-menu').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.keyboard.press('Escape');
 });
 
 test('editor chrome, source and dialogs use one restrained visual system', async ({ page }) => {
@@ -540,11 +549,12 @@ test('long account names retain an explicit mobile sign-out action without overf
   await page.route('**/api/documents', route => route.fulfill({ json: { documents: [] } }));
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto('/#workspace');
-  await expect(page.getByRole('button', { name: `Sign out ${username}` })).toBeVisible();
+  const signOut = await mobileAction(page, `Sign out ${username}`);
+  await expect(signOut).toBeVisible();
   await expect(page.locator('.account-name')).toBeHidden();
-  await expect(page.getByRole('button', { name: `Sign out ${username}` }).locator('span:last-child')).toHaveText('Sign out');
+  expect(await signOut.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
-  await page.getByRole('button', { name: 'Help', exact: true }).click();
+  await (await mobileAction(page, 'Help')).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
   await page.getByRole('button', { name: 'Close help' }).press('Escape');
@@ -646,9 +656,9 @@ test('Tab respects the source limit, Shift+Tab leaves the editor, and mobile exp
   await expect(sourceEditor(page)).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   const exported = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export .tex' }).click();
+  await (await mobileAction(page, 'Export .tex')).click();
   expect(await readFile(await (await exported).path(), 'utf8')).toBe('a d');
-  await page.getByRole('button', { name: 'Toggle documents' }).click();
+  await (await mobileAction(page, 'Documents')).click();
   await expect(page.getByRole('button', { name: 'Import .tex file' })).toBeVisible();
   await page.locator('input[type=file]').setInputFiles({ name: 'mobile.tex', mimeType: 'text/plain', buffer: Buffer.from('imported mobile source') });
   await expectSource(page, 'imported mobile source');
