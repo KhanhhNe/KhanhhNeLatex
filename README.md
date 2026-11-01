@@ -106,6 +106,29 @@ Monaco adds a significant separately loaded editor chunk; production build outpu
 
 Editing remains usable offline while the app is loaded; IndexedDB persists drafts. This version does not install a service worker, so a first visit/reload offline and uncached compiler assets require a connection.
 
+## Page JavaScript API for agents
+
+The loaded page exposes `window.latex`, a frozen API that drives the same React state and actions as the UI. Agents and automation (Playwright `page.evaluate`, DevTools console) can use it instead of DOM snapshots. Run `latex.help()` for every method signature, or `latex.help("replace")` for one; the in-app Help dialog also lists them. Every method returns JSON-serializable data or a Promise that settles when the action has actually completed.
+
+```js
+await latex.ready();                       // drafts + sign-in check loaded
+latex.list();                              // [{ id, cloudId, code, url, title, local, cloud, updatedAt, dirty, current }]
+await latex.open('Alpha paper');           // id, cloudId, 8-character code, /documents/... URL, list key or exact title
+latex.read({ from: 1, to: 20, numbered: true });
+latex.replace('Old title', 'New title', { all: true });   // edits go through Monaco: undoable + autosaved
+latex.replaceLines(3, 4, '\\usepackage{amsmath}');
+const result = await latex.compile();      // { ok, status, errors, warnings, timings }
+latex.log().errors;                        // parsed [{ message, line, context }]
+await latex.preview();                     // resolves once the new PDF is shown, with page count
+latex.timings();                           // engine startup, compile, local and account save ms
+await latex.save();                        // device save, then awaited account save when signed in
+const off = latex.on('compile', detail => console.log(detail));
+```
+
+Coverage: `status`, `list`, `current`, `open`, `create`, `rename`, `remove` (requires `{ confirm: true }`), `read`, `find`, `setSource`, `replace`, `replaceLines`, `insertLines`, `append`, `undo`/`redo`, `save`, `compile`, `cancel`, `preview`, `log`, `timings`, `pdf`, `exportTex`, `exportPdf` (base64, Blob or download), `show`, `livePreview` and `on` (`change`, `document`, `compile`, `preview`, `save`, `error`).
+
+The API costs nothing while unused: no polling, timers or extra requests. Calls use only the requests the equivalent UI action makes. Account operations use the existing same-origin session cookie and owner-scoped endpoints. The API never exposes session tokens or credentials, and it does not open sign-in prompts or `confirm()` dialogs. Opening an account copy over an unsynced device draft is declined unless `replaceDraft: true` is passed.
+
 ## Database schema and Cloudflare deployment
 
 `server/schema.js` is the authoritative Drizzle schema. `npm run db:generate` generates reviewed SQL and snapshots in `migrations`. `npm run db:check` checks the Drizzle journal and fails if schema changes need a new committed migration. Do not use schema push/reset in production. Migrations use forward-only expand/contract changes: deploy additive schema before code that depends on it; remove obsolete columns in a later PR once all deployed code no longer reads them.

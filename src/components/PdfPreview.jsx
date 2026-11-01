@@ -245,7 +245,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       // Scroll is throttled, not debounced: newly visible pages fill during a long pan.
       timer = setTimeout(() => { timer = 0; rasterize(); }, settleDelay);
     };
-    const loaded = () => handlers.current.onReady();
+    const loaded = () => handlers.current.onReady({ pages: document?.numPages ?? null });
     container.addEventListener('load', loaded);
     scroller.addEventListener('wheel', wheel, { passive: false });
     scroller.addEventListener('gesturestart', gestureStart, { passive: false });

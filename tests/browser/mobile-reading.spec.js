@@ -90,6 +90,9 @@ for (const browserType of [chromium, webkit]) {
         await page.setViewportSize({ width, height });
         await expect(page.getByRole('button', { name: 'Read', exact: true })).toHaveAttribute('aria-pressed', 'true');
         expect(await desktopEditor.evaluate(element => element === document.querySelector('.monaco-editor'))).toBe(true);
+        await page.evaluate(() => latex.show('source'));
+        await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('.latex-editor-host')).toBeVisible();
         expect(errors).toEqual([]);
       } finally {
         await context.close();

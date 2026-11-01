@@ -14,7 +14,7 @@ export const preloadLatexEditor = () => engine ||= import('./monaco.js').catch(e
 
 export default function LatexEditor({
   value, onChange, onSave, onCompile, ariaLabel = 'LaTeX source',
-  documentKey, readOnly = false, loading = false,
+  documentKey, readOnly = false, loading = false, apiRef,
 }) {
   const host = useRef(null);
   const metricsProbe = useRef(null);
@@ -70,7 +70,7 @@ export default function LatexEditor({
 
   useEffect(() => {
     let disposed = false;
-    let instance, model, change, resize, guard;
+    let instance, model, change, resize, guard, handle;
     setReady(false);
     setError('');
     preloadLatexEditor().then(({ monaco }) => {
@@ -143,6 +143,26 @@ export default function LatexEditor({
       resize.observe(host.current);
       resize.observe(metricsProbe.current);
       instance.layout();
+      if (apiRef) apiRef.current = handle = {
+        documentKey,
+        replace(next) {
+          const current = model.getValue();
+          let start = 0, end = 0;
+          while (start < current.length && start < next.length && current[start] === next[start]) start++;
+          if (start && /[\ud800-\udbff]/.test(current[start - 1])) start--;
+          while (end < current.length - start && end < next.length - start
+            && current[current.length - 1 - end] === next[next.length - 1 - end]) end++;
+          if (end && /[\udc00-\udfff]/.test(current[current.length - end])) end--;
+          const from = model.getPositionAt(start), to = model.getPositionAt(current.length - end);
+          instance.pushUndoStop();
+          instance.executeEdits('agent-api', [{
+            range: { startLineNumber: from.lineNumber, startColumn: from.column, endLineNumber: to.lineNumber, endColumn: to.column },
+            text: next.slice(start, next.length - end), forceMoveMarkers: true,
+          }]);
+          instance.pushUndoStop();
+        },
+        history(kind) { instance.trigger('agent-api', kind, null); },
+      };
       handoff.current = focused ? selection : null;
       setReady(true);
     }).catch(reason => {
@@ -157,6 +177,7 @@ export default function LatexEditor({
       instance?.dispose();
       model?.dispose();
       editor.current = null;
+      if (apiRef?.current === handle && handle) apiRef.current = null;
     };
   }, [documentKey, attempt]);
 
