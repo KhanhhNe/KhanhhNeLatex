@@ -16,6 +16,7 @@ for (const browserType of [chromium, webkit]) {
       const page = await context.newPage();
       try {
         await page.goto('/#workspace');
+        if (profile === 'iphone') await page.getByRole('button', { name: 'Edit', exact: true }).click();
         const input = page.getByRole('textbox', { name: 'Document title', exact: true });
         await expect(input).toBeEditable();
         await expect(input).toHaveAttribute('maxlength', '100');
@@ -73,6 +74,7 @@ for (const browserType of [chromium, webkit]) {
         await input.blur();
         await expect(page.locator('.save-state')).toContainText('Saved on this device');
         await page.reload();
+        if (profile === 'iphone') await page.getByRole('button', { name: 'Edit', exact: true }).click();
         await expect(input).toHaveValue('Notes');
         expect((await input.boundingBox()).width).toBeLessThan(100);
       } finally {

@@ -57,6 +57,7 @@ for (const [profile, options] of [
       };
       await openDrawer();
       await page.locator('.sidebar .new-document').click();
+      await editorReady(page);
       await page.getByRole('textbox', { name: 'Document title', exact: true }).fill('Short notes');
       await expect(page.locator('.save-state')).toContainText('Saved to your account');
       await openDrawer();
@@ -109,6 +110,7 @@ for (const [profile, options] of [
       await short.focus();
       await page.keyboard.press('Enter');
       await expect(page.getByRole('textbox', { name: 'Document title', exact: true })).toHaveValue('Short notes');
+      await editorReady(page);
       await page.getByRole('textbox', { name: 'Document title', exact: true }).fill('X'.repeat(100));
       await openDrawer();
       const unbroken = page.locator('.document-name').filter({ hasText: 'X'.repeat(100) });

@@ -331,7 +331,7 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 76
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/#workspace');
     await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
-    if (viewport.width < 1050) await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
+    if (viewport.width < 1050) await page.getByRole('button', { name: 'Read', exact: true }).click();
     const geometry = () => page.evaluate(() => Object.fromEntries([
       '.preview-toolbar', '.preview-status', '.pdf-area', '.compile-log-slot', '.preview-footer',
       '.preview-actions .compile-button', '.preview-actions .quiet', '.live-preview', '.editor-container',
@@ -345,9 +345,9 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 76
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
     };
     await page.evaluate(() => { window.engineDelay = 200; window.holdViewer = true; });
-    if (viewport.width < 1050) await page.getByRole('button', { name: 'Source', exact: true }).click();
+    if (viewport.width < 1050) await page.getByRole('button', { name: 'Edit', exact: true }).click();
     await fillSource(page, 'geometry replacement');
-    if (viewport.width < 1050) await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
+    if (viewport.width < 1050) await page.getByRole('button', { name: 'Read', exact: true }).click();
     await page.getByRole('button', { name: 'Compile', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
     await assertStable();
@@ -398,14 +398,15 @@ test('desktop panes fill available width while tablet and enlarged text reflow w
   }
   for (const viewport of [{ width: 1024, height: 768 }, { width: 960, height: 540 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
     await expect(sourceEditor(page)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
-    await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
-    await expect(page.getByRole('checkbox', { name: 'Live preview' })).toBeVisible();
+    await page.getByRole('button', { name: 'Read', exact: true }).click();
+    await expect(page.getByRole('checkbox', { name: 'Live preview' })).toBeHidden();
     expect(await page.locator('.pdf-area').evaluate(element => element.getBoundingClientRect().width)).toBe(viewport.width);
-    if (viewport.height <= 600) expect(await page.locator('.pdf-area').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(240);
-    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    if (viewport.height <= 600) expect(await page.locator('.pdf-viewport').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(100);
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
   }
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.evaluate(() => { document.documentElement.style.fontSize = '34px'; });
@@ -431,8 +432,8 @@ test('mobile controls have readable text, 44px targets, labels and narrow/zoom r
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(await page.evaluate(() => window.innerWidth));
   };
   await checkTargets();
-  await page.getByRole('button', { name: 'PDF preview', exact: true }).click();
-  await expect(page.getByRole('checkbox', { name: 'Live preview' })).toBeVisible();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Live preview' })).toBeHidden();
   await checkTargets();
   await page.getByRole('button', { name: 'Toggle documents' }).click();
   await expect(page.getByRole('button', { name: 'Toggle documents' })).toHaveAttribute('aria-expanded', 'true');
@@ -442,7 +443,7 @@ test('mobile controls have readable text, 44px targets, labels and narrow/zoom r
   await checkTargets();
   await page.setViewportSize({ width: 320, height: 844 });
   await checkTargets();
-  await page.getByRole('button', { name: 'Source', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.evaluate(() => { document.documentElement.style.fontSize = '34px'; });
   await checkTargets();
   const reflow = await page.evaluate(() => {
@@ -634,7 +635,7 @@ test('Tab respects the source limit, Shift+Tab leaves the editor, and mobile exp
   await sourceEditor(page).press('Tab');
   await expectSource(page, 'a d');
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(sourceEditor(page)).toBeVisible();
+  await expect(sourceEditor(page)).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   const exported = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export .tex' }).click();

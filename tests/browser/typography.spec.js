@@ -9,6 +9,7 @@ for (const [width, height] of [[1920, 1080], [1366, 768], [390, 844], [844, 390]
     await page.route(/\/assets\/monaco-[^/]+\.js$/, async route => { await held; await route.continue(); });
     try {
       await page.goto('/#workspace', { waitUntil: 'domcontentloaded' });
+      if (width <= 1050) await page.getByRole('button', { name: 'Edit', exact: true }).click();
       const fallback = page.locator('.latex-editor-fallback');
       await expect(fallback).toBeEnabled();
       const titleSize = () => page.locator('.document-title input').evaluate(element => parseFloat(getComputedStyle(element).fontSize));
