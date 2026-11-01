@@ -85,6 +85,11 @@ for (const browserType of [chromium, webkit]) {
         await page.getByRole('button', { name: 'Sort by name', exact: false }).click();
         await page.getByRole('button', { name: 'New document', exact: true }).click();
         await editorReady(page);
+        if (state === 'portrait') {
+          expect(await page.locator('.view-lines').first().evaluate(element => getComputedStyle(element).fontSize)).toBe('14px');
+          expect(await page.getByRole('textbox', { name: 'LaTeX source', exact: true })
+            .evaluate(element => getComputedStyle(element).fontSize)).toBe('16px');
+        }
         const documentTitle = page.getByRole('textbox', { name: 'Document title' });
         expect(await documentTitle.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
         await documentTitle.fill(title);
