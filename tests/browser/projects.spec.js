@@ -34,6 +34,50 @@ test('Projects dashboard searches, sorts, switches views and opens a persistent 
   await expectSource(page, 'Dashboard round trip');
 });
 
+test('local and account documents share one newest-first list with location icons', async ({ page }) => {
+  const cloudOnly = { id: 'cloud-only', title: 'Cloud only', updated_at: Date.now() + 120000 };
+  let shared;
+  await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
+  await page.route('**/api/documents', async route => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({ json: { documents: [cloudOnly, ...(shared ? [shared] : [])] } });
+    }
+    shared = { id: 'shared-cloud', title: 'Shared paper', updated_at: Date.now() + 60000 };
+    return route.fulfill({ json: { document: { id: shared.id, revision: 1 } } });
+  });
+  await page.goto('/');
+  const projects = page.getByRole('list', { name: 'Projects' });
+  await expect(projects).toContainText('Cloud only');
+  await projects.getByRole('button').filter({ hasText: 'Untitled paper' }).click();
+  await editorReady(page);
+  await page.getByRole('textbox', { name: 'Document title' }).fill('Shared paper');
+  await page.getByRole('button', { name: 'Save to account' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Saved to your account' })).toBeVisible();
+
+  const documents = page.getByRole('navigation', { name: 'Documents' });
+  await expect(documents.locator('.document-item')).toHaveCount(2);
+  await expect(documents.getByRole('button').filter({ hasText: 'Shared paper' })).toHaveCount(1);
+  await expect(documents.getByRole('img', { name: 'Available on this device and in your account' })).toHaveCount(1);
+  await expect(documents.getByRole('img', { name: 'Available in your account' })).toHaveCount(1);
+  await expect(page.getByRole('navigation', { name: 'Cloud documents' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Your projects', exact: true }).click();
+  await expect(projects.locator('.projects-open')).toHaveCount(2);
+  await expect(projects.locator('.projects-open').filter({ hasText: 'Shared paper' })).toHaveCount(1);
+  await expect(projects.getByRole('img', { name: 'Available on this device and in your account' })).toHaveCount(1);
+  await expect(projects.getByRole('button').first()).toContainText('Cloud only');
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    const undersized = await page.locator('.projects-page button,.projects-page a,.projects-page input').evaluateAll(elements =>
+      elements.filter(element => element.getClientRects().length).flatMap(element => {
+        const box = element.getBoundingClientRect();
+        return box.width < 43.9 || box.height < 43.9 ? [element.getAttribute('aria-label') || element.textContent] : [];
+      }));
+    expect(undersized).toEqual([]);
+  }
+});
+
 for (const width of [1920, 390, 320]) {
   test(`Projects dashboard has dark surfaces, accessible controls and no overflow at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });

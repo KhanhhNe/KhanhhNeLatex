@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { sourceEditor, editorReady, fillSource, expectSource } from './source-editor.js';
 
 const titleEditor = page => page.getByRole('textbox', { name: 'Document title', exact: true });
-const localDocuments = page => page.getByRole('navigation', { name: 'Local documents' }).getByRole('button');
+const localDocuments = page => page.getByRole('navigation', { name: 'Documents' }).getByRole('button');
 const saved = page => page.getByRole('status').filter({ hasText: 'Saved on this device' });
 
 async function observeStorage(page) {
@@ -527,9 +527,9 @@ test('reopening a linked cloud draft replaces visible inputs and persists the fe
   await page.route('**/api/documents/cloud-document', route => route.fulfill({ json: { document: cloud } }));
   await page.goto('/#workspace');
   await editorReady(page);
-  const openCloud = page.getByRole('navigation', { name: 'Cloud documents' }).getByRole('button');
-  await openCloud.click();
+  await page.getByRole('navigation', { name: 'Documents' }).getByRole('button').filter({ hasText: 'Cloud title' }).click();
   await expectSource(page, 'original cloud text');
+  const openCloud = page.getByRole('button', { name: 'Open account version of Cloud title' });
   await fillSource(page, 'local edits not yet debounced');
   cloud = { ...cloud, title: 'Updated cloud title', source: 'new cloud text', revision: 2 };
   let prompted = false;

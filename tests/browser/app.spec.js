@@ -68,9 +68,9 @@ test('invalid input, cancellation, document selection and mobile layout behave s
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByText('Compilation cancelled.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'New document' }).click();
-  await expect(page.getByRole('navigation', { name: 'Local documents' }).getByRole('button')).toHaveCount(2);
+  await expect(page.getByRole('navigation', { name: 'Documents' }).getByRole('button')).toHaveCount(2);
   await fillSource(page, 'latest unsaved change');
-  await page.getByRole('navigation', { name: 'Local documents' }).getByRole('button').first().click();
+  await page.getByRole('navigation', { name: 'Documents' }).getByRole('button').first().click();
   await expectSource(page, 'latest unsaved change');
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(editor).toBeVisible();

@@ -4,8 +4,10 @@ import { LatexCompiler } from './compiler.js';
 import { api, drafts, download, readTex } from './storage.js';
 import LatexEditor from './components/LatexEditor.jsx';
 import ProjectsView from './components/ProjectsView.jsx';
+import DocumentAvailability from './components/DocumentAvailability.jsx';
 import Icon from './components/Icon.jsx';
 import useWorkspaceResize from './components/workspace-resize.js';
+import { mergeDocuments } from './document-list.js';
 import './style.css';
 
 const starter = String.raw`\documentclass[11pt]{article}
@@ -102,6 +104,7 @@ function App() {
   const cloudQueue = useRef(new Map());
   const cloudSaving = useRef(false);
   const account = useRef(null);
+  const cloudRequest = useRef(0);
   account.current = user;
 
   function notice(reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
@@ -236,9 +239,12 @@ function App() {
     try { await select(document); }
     catch (reason) { notice(reason); }
   }
-  async function refreshCloud() {
+  async function refreshCloud(owner = account.current) {
+    if (!owner) { cloudRequest.current++; setCloud([]); return; }
+    const request = ++cloudRequest.current;
     const data = await api('/documents');
-    setCloud(data.documents);
+    if (request === cloudRequest.current
+      && (!account.current || account.current.id === owner.id)) setCloud(data.documents);
   }
   useEffect(() => {
     let disposed = false;
@@ -259,7 +265,11 @@ function App() {
       if (view === 'workspace') compile({ reveal: false });
     }).catch(notice);
     api('/me').then(data => {
-      if (!disposed) { setUser(data.user); refreshCloud().catch(notice); }
+      if (!disposed) {
+        account.current = data.user;
+        setUser(data.user);
+        refreshCloud(data.user).catch(notice);
+      }
     }).catch(reason => {
       if (!reason.message.startsWith('Sign in') && !reason.message.startsWith('Session expired')) notice(reason);
     });
@@ -444,7 +454,7 @@ function App() {
       const local = active.current?.cloudId === item.id && active.current.owner === user.id
         ? active.current : documents.find(doc => doc.cloudId === item.id && doc.owner === user.id);
       if (local?.dirty && !window.confirm('Replace this device draft with the cloud version? Export the local draft first if you need it.')) return;
-      const next = { ...document, id: local?.id || crypto.randomUUID(), updated_at: Date.now(), cloudId: document.id, owner: user.id, dirty: false };
+      const next = { ...document, id: local?.id || crypto.randomUUID(), updated_at: document.updated_at ?? Date.now(), cloudId: document.id, owner: user.id, dirty: false };
       await select(next, true);
     } catch (reason) { notice(reason); }
   }
@@ -483,6 +493,16 @@ function App() {
   }
   const actions = useRef({});
   actions.current = { compile, sync, modal: Boolean(auth || showHelp) };
+  const unifiedDocuments = mergeDocuments(documents, cloud, user?.id);
+  function openDocument(document) {
+    if (!document.localAvailable) return openCloud(document.cloudItem);
+    if (document.cloudItem && !document.dirty
+      && Number(document.cloudItem.updated_at) > Number(document.localUpdatedAt)) {
+      return openCloud(document.cloudItem);
+    }
+    const { key, localAvailable, cloudAvailable, cloudItem, localUpdatedAt, ...draft } = document;
+    return select(draft);
+  }
   useEffect(() => {
     const keys = event => {
       if (actions.current.modal) return;
@@ -500,7 +520,8 @@ function App() {
     <div className="app-content" inert={auth || showHelp ? true : undefined}>
     {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
     <input ref={fileInput} type="file" accept=".tex,text/plain,application/x-tex" hidden onChange={importFile} />
-    {view === 'projects' ? <ProjectsView documents={documents} onOpen={document => select(document)} onNew={() => newDocument()}
+    {view === 'projects' ? <ProjectsView documents={unifiedDocuments} onOpen={openDocument}
+      onOpenCloud={openCloud} onNew={() => newDocument()}
       onImport={() => fileInput.current.click()} username={user?.username}
       onSignIn={() => user ? showWorkspace() : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className="workspace-view">
     <header className="topbar">
@@ -510,7 +531,14 @@ function App() {
       <div className="top-actions">
         <button className="quiet" onClick={() => setShowHelp(true)}><Icon name="help" /><span>Help</span></button>
         {user ? <button className="account" aria-label={`Sign out ${user.username}`} title={`Sign out ${user.username}`} disabled={busy} onClick={async () => {
-          try { await persist(); await api('/logout', {}); setUser(null); setCloud([]); }
+          try {
+            await persist();
+            await api('/logout', {});
+            account.current = null;
+            cloudRequest.current++;
+            setUser(null);
+            setCloud([]);
+          }
           catch (reason) { notice(reason); }
         }}><Icon name="user" /><span className="account-name">{user.username}</span><span>Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}><Icon name="user" />Sign in</button>}
       </div>
@@ -519,15 +547,17 @@ function App() {
       <aside id="document-sidebar" className={`sidebar ${sidebar ? 'open' : ''}`}>
         <div className="sidebar-heading"><span>Documents</span><Icon name="panel" /></div>
         <button className="new-document" onClick={() => newDocument()} disabled={busy}><Icon name="plus" /><span>New document</span></button>
-        <div className="section-label">On this device <span>{documents.length}</span></div>
-        <nav aria-label="Local documents">{documents.map(doc =>
-          <button key={doc.id} className={`document-item ${current?.id === doc.id ? 'selected' : ''}`} onClick={() => select(doc)} disabled={busy}>
-            <Icon name="file" className="file-icon" /><span className="document-name">{doc.title}<small>{doc.cloudId ? 'Linked to account' : 'Local draft'}</small></span>
-          </button>)}</nav>
-        {user && <><div className="section-label">Your cloud documents <span>{cloud.length}</span></div><nav aria-label="Cloud documents">
-          {cloud.map(item => <button key={item.id} className="document-item" disabled={busy} onClick={() => openCloud(item)}><Icon name="file" className="file-icon" /><span className="document-name">{item.title}<small>Open saved version</small></span></button>)}
-          {!cloud.length && <p className="sidebar-note">Save a document to keep it in your account.</p>}
-        </nav></>}
+        <nav className="document-list" aria-label="Documents">{unifiedDocuments.map(document =>
+          <div className="document-row" key={document.key}>
+            <button className={`document-item ${document.localAvailable && current?.id === document.id ? 'selected' : ''}`}
+              onClick={() => openDocument(document)} disabled={busy}>
+              <Icon name="file" className="file-icon" /><span className="document-name">{document.title}
+                <small><DocumentAvailability localAvailable={document.localAvailable} cloudAvailable={document.cloudAvailable} /></small></span>
+            </button>
+            {document.localAvailable && document.cloudAvailable && <button className="document-cloud-open"
+              aria-label={`Open account version of ${document.title}`} title="Open account version" disabled={busy}
+              onClick={() => openCloud(document.cloudItem)}><Icon name="cloud" /></button>}
+          </div>)}</nav>
         <div className="sidebar-bottom">
           <button className="import-button" onClick={() => fileInput.current.click()} disabled={busy}><Icon name="upload" /><span>Import .tex file</span></button>
           <button className="delete-button" onClick={remove} disabled={!current || busy}>Delete current document</button>
@@ -604,8 +634,9 @@ function App() {
     </div>}
     </div>
     {auth && <AuthDialog mode={auth} setMode={setAuth} onClose={() => setAuth(null)} onSuccess={async signedIn => {
+      account.current = signedIn;
       setUser(signedIn); setAuth(null);
-      try { await refreshCloud(); } catch (reason) { notice(reason); }
+      try { await refreshCloud(signedIn); } catch (reason) { notice(reason); }
     }} />}
     {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
   </div>;

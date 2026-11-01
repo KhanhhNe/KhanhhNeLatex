@@ -26,10 +26,16 @@
 .projects-columns button{font-size:12px;color:#b9b9b9;padding:0 0;display:flex;align-items:center;gap:7px}
 .projects-list{list-style:none;padding:0 12px;margin:0;overflow:auto;flex:1}
 .projects-list li{border-bottom:1px solid #303030}
-.projects-open{display:flex;align-items:center;gap:14px;text-align:left;width:100%;padding:16px 10px;border-radius:8px}
+.projects-row{display:flex;align-items:center;gap:4px}
+.projects-open{display:flex;align-items:center;gap:14px;text-align:left;min-width:0;flex:1;padding:16px 10px;border-radius:8px}
+.projects-cloud-open{display:grid;place-items:center;width:44px;min-width:44px;border-radius:8px;color:#a8d1c1}
+.projects-cloud-open .ui-icon{width:16px;height:16px}
 .projects-file{width:20px;height:24px;color:#b8c3cb;flex-shrink:0}
 .projects-name{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
 .projects-name small{display:block;color:#b8b8b8;font-size:12px;margin-top:3px}
+.document-availability{display:inline-flex;align-items:center;gap:5px;vertical-align:middle}
+.document-availability .ui-icon{width:14px;height:14px;flex-shrink:0}
+.availability-device{color:#c0ced8}.availability-cloud{color:#a8d1c1}
 .projects-open time{color:#b8b8b8;font-size:12px;white-space:nowrap}
 .projects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));align-content:start;gap:16px;padding:20px}
 .projects-grid li{border:1px solid #414141;border-radius:10px;overflow:hidden}
