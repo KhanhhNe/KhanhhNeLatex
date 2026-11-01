@@ -3,12 +3,23 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import './PdfPreview.css';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const maxPixels = 2_000_000;
+const lowMemory = typeof navigator !== 'undefined' && (navigator.deviceMemory || 4) <= 2;
+// Whole-page canvases up to this size; larger zooms use a low-res backdrop plus a viewport-sized sharp tile.
+const pageCap = lowMemory ? 3_000_000 : 6_000_000;
+const backdropCap = 1_000_000;
+const detailCap = lowMemory ? 6_000_000 : 12_000_000;
 const maxPages = 3;
 const settleDelay = 180;
 // Momentum wheel events arrive every frame; a longer gap ends the inertial tail.
 const wheelTailGap = 80;
 const scrollIdle = 150;
+const ratio = () => clamp(window.devicePixelRatio || 1, .25, 4);
+const area = box => (box.x1 - box.x0) * (box.y1 - box.y0);
+const release = canvas => {
+  if (!canvas) return;
+  canvas.remove();
+  canvas.width = canvas.height = 0;
+};
 
 export default function PdfPreview({ viewer, pending, onReady, onError, viewState }) {
   const sync = useRef(null);
@@ -28,7 +39,9 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
     let disposed = false, failed = false, worker, pdfWorker, document, loading, renderTask, timer, loadTimer, frame = 0;
     let zoom = 1, paintedZoom = 1, width = 0, height = 0, fitted = true, ready = false, rendering = false;
     let generation = 0, gesture = null, pinch = null, saved, restored = false, revealTimer;
-    let lastWheel = -Infinity, wheelZoom = false;
+    let lastWheel = -Infinity, wheelZoom = false, dirty = false, dprQuery;
+    // Pages are laid out in real CSS pixels at layoutZoom; transforms only bridge an unsettled zoom.
+    let layoutZoom = 1, layoutDpr = 0;
     const layout = [], cache = new Map();
     const zooming = () => Boolean(pinch || gesture);
     const fail = reason => {
@@ -52,7 +65,8 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       frame = 0;
       sheet.current.style.width = `${width * zoom}px`;
       sheet.current.style.height = `${height * zoom}px`;
-      pages.current.style.transform = `scale(${zoom})`;
+      pages.current.style.transform = zoom === layoutZoom ? 'none' : `scale(${zoom / layoutZoom})`;
+      pages.current.dataset.zoom = zoom;
       paintedZoom = zoom;
       container.querySelector('output').textContent = `${Math.round(zoom * 100)}%`;
       remember();
@@ -69,45 +83,110 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
         .filter(page => page.visible).sort((a, b) => a.distance - b.distance)
         .slice(0, maxPages).map(page => page.index);
     };
+    const relayout = () => {
+      const dpr = ratio();
+      if (layoutZoom !== zoom || layoutDpr !== dpr) {
+        // Snap every page box to whole device pixels so its canvas maps 1:1 without resampling.
+        const snap = value => Math.round(value * zoom * dpr);
+        for (const info of layout) {
+          info.top = snap(info.y);
+          info.dw = Math.max(1, snap(info.width));
+          info.dh = Math.max(1, snap(info.height));
+          info.element.style.top = `${info.top / dpr}px`;
+          info.element.style.width = `${info.dw / dpr}px`;
+          info.element.style.height = `${info.dh / dpr}px`;
+        }
+        pages.current.style.width = `${width * zoom}px`;
+        pages.current.style.height = `${height * zoom}px`;
+        layoutZoom = zoom;
+        layoutDpr = dpr;
+        paint();
+      }
+      // Centering and split panes can leave the sheet on a fractional device pixel; cancel that offset.
+      const node = pages.current, box = node.getBoundingClientRect();
+      const nudgeX = Number.parseFloat(node.style.left) || 0, nudgeY = Number.parseFloat(node.style.top) || 0;
+      const x = box.left - nudgeX, y = box.top - nudgeY;
+      node.style.left = `${Math.round(x * dpr) / dpr - x}px`;
+      node.style.top = `${Math.round(y * dpr) / dpr - y}px`;
+    };
+    const region = (info, extra) => {
+      const box = info.element.getBoundingClientRect(), view = scroller.getBoundingClientRect();
+      const left = view.left + scroller.clientLeft, top = view.top + scroller.clientTop;
+      const mx = scroller.clientWidth * extra, my = scroller.clientHeight * extra;
+      return {
+        x0: clamp(Math.floor((left - mx - box.left) * layoutDpr), 0, info.dw),
+        x1: clamp(Math.ceil((left + scroller.clientWidth + mx - box.left) * layoutDpr), 0, info.dw),
+        y0: clamp(Math.floor((top - my - box.top) * layoutDpr), 0, info.dh),
+        y1: clamp(Math.ceil((top + scroller.clientHeight + my - box.top) * layoutDpr), 0, info.dh),
+      };
+    };
+    const draw = async (page, canvas, scale, offsetX = 0, offsetY = 0) => {
+      renderTask = page.render({ canvasContext: canvas.getContext('2d', { alpha: false }),
+        viewport: page.getViewport({ scale, offsetX, offsetY }), background: '#ffffff' });
+      try { await renderTask.promise; }
+      catch (reason) { canvas.width = canvas.height = 0; throw reason; }
+      finally { renderTask = null; }
+    };
     const rasterize = async () => {
-      if (disposed || failed || !document || zooming() || rendering) return;
+      if (disposed || failed || !document || zooming()) return;
+      if (rendering) { dirty = true; return; }
       rendering = true;
-      const run = generation, wanted = visible();
+      dirty = false;
+      relayout();
+      const run = generation, wanted = visible(), stale = () => disposed || failed || run !== generation;
       // Keep only viewport pages; no full-document canvas stack or per-event PDF work.
       for (const [index, record] of cache) {
         if (wanted.includes(index)) continue;
-        record.canvas.remove();
-        record.canvas.width = record.canvas.height = 0;
+        release(record.canvas);
+        release(record.detail?.canvas);
         cache.delete(index);
       }
       try {
         for (const index of wanted) {
-          if (disposed || failed || run !== generation) break;
-          const info = layout[index];
-          const scale = Math.min(zoom * Math.min(devicePixelRatio || 1, 2),
-            Math.sqrt(maxPixels / (info.width * info.height)));
-          if (Math.abs((cache.get(index)?.scale || 0) - scale) < .01) continue;
-          const page = await document.getPage(index + 1);
-          if (disposed || failed || run !== generation) break;
-          const canvas = window.document.createElement('canvas');
-          const raster = page.getViewport({ scale });
-          canvas.width = Math.max(1, Math.floor(raster.width));
-          canvas.height = Math.max(1, Math.floor(raster.height));
-          canvas.setAttribute('aria-label', `PDF page ${index + 1}`);
-          renderTask = page.render({ canvasContext: canvas.getContext('2d', { alpha: false }),
-            viewport: raster, background: '#ffffff' });
-          try { await renderTask.promise; }
-          catch (reason) { canvas.width = canvas.height = 0; throw reason; }
-          finally { renderTask = null; }
-          if (disposed || failed || run !== generation) {
-            canvas.width = canvas.height = 0;
-            break;
+          if (stale()) break;
+          const info = layout[index], record = cache.get(index) ?? {};
+          const whole = info.dw * info.dh <= pageCap, key = `${whole ? 'page' : 'backdrop'}:${info.dw}x${info.dh}`;
+          let page;
+          if (record.key !== key) {
+            page = await document.getPage(index + 1);
+            if (stale()) break;
+            const shrink = whole ? 1 : Math.sqrt(backdropCap / (info.dw * info.dh));
+            const canvas = window.document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(info.dw * shrink));
+            canvas.height = Math.max(1, Math.round(info.dh * shrink));
+            canvas.setAttribute('aria-label', `PDF page ${index + 1}`);
+            await draw(page, canvas, canvas.width / info.width);
+            if (stale()) { canvas.width = canvas.height = 0; break; }
+            release(record.canvas);
+            if (whole) { release(record.detail?.canvas); record.detail = null; }
+            info.element.prepend(canvas);
+            Object.assign(record, { canvas, key });
+            cache.set(index, record);
           }
-          const previous = cache.get(index)?.canvas;
-          info.element.replaceChildren(canvas);
-          if (previous) previous.width = previous.height = 0;
-          cache.set(index, { canvas, scale });
-          page.cleanup();
+          if (!whole) {
+            const view = region(info, 0), detail = record.detail;
+            const covered = detail?.key === key && detail.x0 <= view.x0 && detail.y0 <= view.y0 &&
+              detail.x1 >= view.x1 && detail.y1 >= view.y1;
+            let want = region(info, .125);
+            if (area(want) > detailCap) want = view;
+            if (area(view) > 0 && !covered && area(want) <= detailCap) {
+              page ??= await document.getPage(index + 1);
+              if (stale()) break;
+              const canvas = window.document.createElement('canvas');
+              canvas.className = 'pdf-detail';
+              canvas.width = want.x1 - want.x0;
+              canvas.height = want.y1 - want.y0;
+              canvas.setAttribute('aria-hidden', 'true');
+              Object.assign(canvas.style, { left: `${want.x0 / info.dw * 100}%`, top: `${want.y0 / info.dh * 100}%`,
+                width: `${canvas.width / info.dw * 100}%`, height: `${canvas.height / info.dh * 100}%` });
+              await draw(page, canvas, info.dw / info.width, -want.x0, -want.y0);
+              if (stale()) { canvas.width = canvas.height = 0; break; }
+              release(detail?.canvas);
+              info.element.append(canvas);
+              record.detail = { canvas, key, ...want };
+            }
+          }
+          page?.cleanup();
         }
         if (!ready && !disposed && run === generation && wanted.length && wanted.every(index => cache.has(index))) {
           clearTimeout(loadTimer);
@@ -116,10 +195,9 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       } catch (reason) { fail(reason); }
       finally {
         rendering = false;
-        if (!disposed && (run !== generation || visible().some(index => !cache.has(index)))) schedule();
+        if (!disposed && (dirty || run !== generation || visible().some(index => !cache.has(index)))) schedule();
       }
-    };
-    const schedule = () => {
+    };    const schedule = () => {
       if (failed || disposed) return;
       clearTimeout(timer);
       timer = setTimeout(() => { timer = 0; rasterize(); }, settleDelay);
@@ -316,6 +394,16 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       schedule();
     });
     observer.observe(scroller);
+    const dprChanged = () => {
+      dprQuery?.removeEventListener('change', dprChanged);
+      dprQuery = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      dprQuery.addEventListener('change', dprChanged);
+      if (!document) return;
+      generation++;
+      renderTask?.cancel();
+      schedule();
+    };
+    dprChanged();
     loadTimer = setTimeout(() => fail(new Error('PDF preview loading timed out')), 15000);
     (async () => {
       const pdfjs = await import('pdfjs-dist');
@@ -364,6 +452,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       cancelAnimationFrame(frame);
       renderTask?.cancel();
       observer.disconnect();
+      dprQuery?.removeEventListener('change', dprChanged);
       container.removeEventListener('load', loaded);
       scroller.removeEventListener('wheel', wheel);
       scroller.removeEventListener('gesturestart', gestureStart);
@@ -374,7 +463,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       for (const type of ['touchend', 'touchcancel']) scroller.removeEventListener(type, touchEnd);
       scroller.removeEventListener('scroll', scroll);
       scroller.removeEventListener('keydown', key);
-      for (const record of cache.values()) record.canvas.width = record.canvas.height = 0;
+      for (const record of cache.values()) { release(record.canvas); release(record.detail?.canvas); }
       loading?.destroy().catch(reason => console.warn('PDF preview cleanup failed.', reason.name));
       pdfWorker?.destroy();
       worker?.terminate();
