@@ -20,11 +20,13 @@ In another terminal, `npm run dev` optionally serves Vite HMR at port 5173 and p
 
 ```powershell
 npm test
-npx playwright install chromium
+npx playwright install chromium webkit
 npm run test:e2e
 ```
 
 The browser tests include a real WASM PDF compile/export, worker cancellation/error handling, local persistence, text-only import validation, responsive layout, session cookies, ownership/CSRF checks and revision conflicts.
+
+Mobile regressions run Chromium and WebKit with the iPhone 13 Pro profile at 390x844 portrait and 844x390 landscape, plus shortened browser-toolbar and keyboard-height viewport simulations. These are emulations, not physical iPhone/Safari keyboard or notch measurements. Mobile chrome reserves platform safe-area insets without disabling zoom; source/title/search inputs use at least 16px text, and reduced-height pages and dialogs keep bottom actions scrollable. Set `MOBILE_ARTIFACTS` to an existing local folder to capture audit screenshots while running `npx playwright test mobile.spec.js`.
 
 ## Writing and persistence
 
