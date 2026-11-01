@@ -80,3 +80,24 @@ test('direct permalink startup is early but projects do not allocate a compiler'
   await page.waitForFunction(() => window.engineStarts[0]?.ready);
   expect(await page.evaluate(() => window.engineStarts.length)).toBe(1);
 });
+
+test('an early worker held by a debugger that never resumes it is replaced and the app still compiles', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Uses Chromium DevTools auto-attach');
+  await observeWorkers(page);
+  const cdp = await context.newCDPSession(page);
+  let held = false;
+  cdp.on('Target.attachedToTarget', ({ sessionId, targetInfo }) => {
+    // Mimic a client that misses the first compiler worker: it stays paused before its script loads.
+    // Detaching any other waiting session lets that worker run.
+    if (!held && targetInfo.url.includes('/compiler/worker.js')) { held = true; return; }
+    cdp.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+  });
+  await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
+  await page.goto('/#workspace');
+  await expect(page.getByText(/Compiled in your browser/)).toBeVisible({ timeout: 40000 });
+  const workers = await page.evaluate(() => window.engineStarts);
+  expect(workers.length).toBe(2);
+  expect(workers[0].terminated).toBeGreaterThan(0);
+  expect(workers[0].ready).toBeUndefined();
+  expect(workers[1].magic).toBe('%PDF-');
+});

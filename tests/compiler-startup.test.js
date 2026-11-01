@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LatexCompiler } from '../src/compiler.js';
-import { createEngineWarmup } from '../src/engine-start.js';
+import { createEngineWarmup, createWatchedWorker } from '../src/engine-start.js';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 class WorkerStub {
@@ -127,4 +127,46 @@ test('failed warming is reported and subsequent warmup or compile can retry', as
   workers[2].pdf();
   await output;
   assert.ok(workers.every(worker => worker.terminated));
+});
+
+test('a worker held before it starts (e.g. paused by a debugger) is replaced, then reported instead of hanging', async () => {
+  const created = [];
+  const factory = () => { const worker = new WorkerStub(); created.push(worker); return worker; };
+  const watched = createWatchedWorker(factory, { startTimeout: 20 });
+  watched.postMessage({ cmd: 'early' });
+  const received = [];
+  watched.onmessage = ({ data }) => received.push(data);
+  await wait(35);
+  assert.equal(created.length, 2);
+  assert.equal(created[0].terminated, true);
+  created[1].send({ cmd: 'started' });
+  assert.deepEqual(created[1].messages, [{ cmd: 'early' }]);
+  created[1].send({ result: 'ok' });
+  created[0].onmessage({ data: { result: 'stale' } });
+  assert.deepEqual(received, [{ result: 'ok' }]);
+  await wait(35);
+  assert.equal(created.length, 2);
+
+  const held = [];
+  const compiler = new LatexCompiler({
+    workerFactory: () => createWatchedWorker(() => { const worker = new WorkerStub(); held.push(worker); return worker; }, { startTimeout: 20 }),
+  });
+  await assert.rejects(compiler.compile('source'), /did not start.*resume new workers/);
+  assert.equal(held.length, 2);
+  assert.ok(held.every(worker => worker.terminated));
+  assert.equal(compiler.active, null);
+});
+
+test('a started worker is never replaced, even when engine loading is slow', async () => {
+  const created = [];
+  const watched = createWatchedWorker(() => { const worker = new WorkerStub(); created.push(worker); return worker; }, { startTimeout: 20 });
+  const warming = createEngineWarmup(() => watched, 500);
+  created[0].send({ cmd: 'started' });
+  await wait(50);
+  assert.equal(created.length, 1);
+  created[0].send({ result: 'ok' });
+  await warming.promise;
+  warming.dispose(new Error('done'));
+  await warming.promise.catch(() => {});
+  assert.equal(created[0].terminated, true);
 });

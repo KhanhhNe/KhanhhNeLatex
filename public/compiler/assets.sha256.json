@@ -1472,8 +1472,8 @@
     },
     {
       "path": "/compiler/worker.js",
-      "size": 4360,
-      "sha256": "4bf02a9ce02d9de04ba4a5bcd379c45a335f3eeaa59d6fc94e352c6cb2d012b9"
+      "size": 4398,
+      "sha256": "ecc1c9177645cb7634b638dc7e982d56e55dd0296d7f55cbfcbb419c11177a68"
     },
     {
       "path": "/compiler/xcolor-source.tar.gz",

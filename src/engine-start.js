@@ -1,4 +1,57 @@
-export const PDFTEX_WORKER = '/compiler/worker.js?v=startup-6';
+export const PDFTEX_WORKER = '/compiler/worker.js?v=startup-7';
+export const WORKER_START_TIMEOUT = 10000;
+const NOT_STARTED = 'The browser compiler did not start. If a debugger or browser automation tool is attached to this page, let it resume new workers, then reload.';
+
+// A debugger that auto-attaches with waitForDebuggerOnStart can hold a new worker before
+// its script is even fetched (e.g. a CDP client that misses the attach event). The worker
+// posts { cmd: 'started' } first, so a held worker is replaced once and then reported.
+export function createWatchedWorker(create, { startTimeout = WORKER_START_TIMEOUT, attempts = 2 } = {}) {
+  let worker, timer, started = false, closed = false, tries = 0;
+  const queue = [];
+  const proxy = {
+    onmessage: null, onerror: null, onmessageerror: null,
+    postMessage(...args) {
+      if (closed) return;
+      if (started) worker.postMessage(...args); else queue.push(args);
+    },
+    terminate() {
+      closed = true;
+      clearTimeout(timer);
+      worker?.terminate();
+    },
+  };
+  const fail = message => {
+    closed = true;
+    clearTimeout(timer);
+    worker?.terminate();
+    proxy.onerror?.({ message });
+  };
+  const spawn = () => {
+    tries++;
+    const current = worker = create();
+    current.onmessage = event => {
+      if (current !== worker || closed) return;
+      if (!started) {
+        started = true;
+        clearTimeout(timer);
+        for (const args of queue.splice(0)) current.postMessage(...args);
+      }
+      if (event.data?.cmd !== 'started') proxy.onmessage?.(event);
+    };
+    current.onerror = event => { if (current === worker && !closed) proxy.onerror?.(event); };
+    current.onmessageerror = event => { if (current === worker && !closed) proxy.onmessageerror?.(event); };
+    timer = setTimeout(() => {
+      if (started || closed) return;
+      current.terminate();
+      if (tries >= attempts) { fail(NOT_STARTED); return; }
+      try { spawn(); } catch (error) { fail(error.message || NOT_STARTED); }
+    }, startTimeout);
+  };
+  spawn();
+  return proxy;
+}
+
+export const createPdftexWorker = () => createWatchedWorker(() => new Worker(PDFTEX_WORKER));
 
 export function createEngineWarmup(workerFactory, loadTimeout = 300000, idleTimeout = 60000) {
   const startedAt = performance.now();
@@ -48,7 +101,7 @@ export function takeEarlyWarmup() {
 if (typeof window !== 'undefined' &&
     (location.hash === '#workspace' || /^\/documents\/[^/]+\/[A-Za-z0-9_-]{8}\/?$/.test(location.pathname))) {
   try {
-    early = createEngineWarmup(() => new Worker(PDFTEX_WORKER));
+    early = createEngineWarmup(createPdftexWorker);
     early.promise.catch(error => console.warn('Early browser engine warmup stopped:', error.message));
   } catch (error) {
     console.warn('Early browser engine warmup could not start:', error.message);

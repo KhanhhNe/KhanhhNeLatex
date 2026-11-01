@@ -1,4 +1,5 @@
 /* SwiftLaTeX runtime is AGPL-3.0; see /compiler/NOTICE.txt and project LICENSE. */
+self.postMessage({ cmd: 'started' });
 importScripts(`/compiler/manifest.js${self.location.search}`, `/compiler/format-assets.js${self.location.search}`);
 const post = self.postMessage.bind(self);
 let formatBytes;
