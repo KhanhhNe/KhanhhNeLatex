@@ -36,7 +36,7 @@ test('actual PDF survives cheap desktop dragging, keyboard limits, reset and per
     window.Worker = class extends NativeWorker {
       constructor(url, options) {
         super(url, options);
-        if (String(url).endsWith('/compiler/worker.js')) window.resizeAudit.workers++;
+        if (new URL(url, location.href).pathname === '/compiler/worker.js') window.resizeAudit.workers++;
       }
     };
     const put = IDBObjectStore.prototype.put;

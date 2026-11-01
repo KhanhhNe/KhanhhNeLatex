@@ -52,6 +52,31 @@ async function loadCompiler(page) {
   });
 }
 
+test('slow WASM and format loading do not consume the real worker compile deadline', async ({ page, context }) => {
+  await loadCompiler(page);
+  let formatRequests = 0;
+  await context.route(/\/compiler\/(?:swiftlatexpdftex\.wasm|formats\/pdftex-[a-f0-9]+\.fmt\.gz)$/, async route => {
+    if (route.request().url().includes('/formats/')) formatRequests++;
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    await route.continue();
+  });
+  const result = await page.evaluate(async source => {
+    const statuses = [];
+    const compiler = new window.LatexCompiler({ timeout: 2000, loadTimeout: 30000 });
+    const output = await compiler.compile(source, status => statuses.push(status));
+    return {
+      magic: new TextDecoder().decode(new Uint8Array(output.pdf).slice(0, 5)),
+      timings: output.timings, statuses,
+    };
+  }, source);
+  expect(result.magic).toBe('%PDF-');
+  expect(result.timings.initializationMs).toBeGreaterThan(3000);
+  expect(result.timings.compilationMs).toBeLessThan(2000);
+  expect(result.statuses[0]).toBe('Loading browser engine...');
+  expect(result.statuses).toContain('Typesetting locally...');
+  expect(formatRequests).toBe(1);
+});
+
 test('real worker compiles the bundled T1 resume package subset', async ({ page }) => {
   await loadCompiler(page);
   const result = await page.evaluate(async source => {
@@ -272,7 +297,7 @@ test('unused warmup expires and warmup load failures recover without retaining w
   await loadCompiler(page);
   const result = await page.evaluate(async () => {
     const workers = [];
-    const compiler = new window.LatexCompiler({ timeout: 10, workerFactory: () => {
+    const compiler = new window.LatexCompiler({ timeout: 10, loadTimeout: 10, idleTimeout: 10, workerFactory: () => {
       const worker = { terminated: 0, postMessage() {}, terminate() { this.terminated++; } };
       workers.push(worker);
       return worker;
@@ -292,7 +317,7 @@ test('unused warmup expires and warmup load failures recover without retaining w
     compiler.cancel();
     return { expired, idleExpired, failure, terminated: workers.map(worker => worker.terminated) };
   });
-  expect(result.expired).toContain('warmup expired');
+  expect(result.expired).toContain('engine loading timed out');
   expect(result.idleExpired).toBe(true);
   expect(result.failure).toBe('warmup load error');
   expect(result.terminated).toEqual([1, 1, 1, 1]);
@@ -314,7 +339,7 @@ test('timeout, dispatch, status, loading and decoding errors release workers and
       failures.push(await promise);
       if (compiler.active) throw new Error('Compiler did not release its job.');
     };
-    await fail();
+    await fail(worker => worker.onmessage({ data: { result: 'ok' } }));
     await fail(worker => {
       worker.postMessage = () => { throw new Error('dispatch failed'); };
       worker.onmessage({ data: { result: 'ok' } });

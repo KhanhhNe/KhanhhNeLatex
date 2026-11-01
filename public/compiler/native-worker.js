@@ -17,10 +17,12 @@ child.onmessage = ({ data }) => {
     texLog = data.log || '';
     const xdv = data.pdf;
     child.terminate();
+    self.postMessage({ cmd: 'phase', phase: 'loading', name: 'PDF converter' });
     child = new Worker(`/compiler/dvipdf-worker.js${self.location.search}`);
     errors();
     child.onmessage = ({ data: converted }) => {
       if (!converted.cmd && converted.result === 'ok') {
+        self.postMessage({ cmd: 'phase', phase: 'compiling' });
         for (const file of fonts) child.postMessage(file);
         child.postMessage({ cmd: 'writefile', url: 'main.xdv', src: new Uint8Array(xdv) }, [xdv]);
         child.postMessage({ cmd: 'setmainfile', url: 'main.xdv' });

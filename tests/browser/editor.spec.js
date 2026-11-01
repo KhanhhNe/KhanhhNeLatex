@@ -50,7 +50,7 @@ async function fakeEngine(page) {
     }).observe(document, { childList: true, subtree: true });
     window.Worker = class {
       constructor(url, options) {
-        if (!String(url).endsWith('/compiler/worker.js')) return new NativeWorker(url, options);
+        if (new URL(url, location.href).pathname !== '/compiler/worker.js') return new NativeWorker(url, options);
         this.terminated = false;
         this.passes = 0;
         window.engineWorkers.push(this);
