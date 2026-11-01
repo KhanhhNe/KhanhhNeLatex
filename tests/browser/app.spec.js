@@ -79,6 +79,18 @@ test('invalid input, cancellation, document selection and mobile layout behave s
   await expect(page.getByRole('region', { name: 'PDF preview' })).toBeVisible();
 });
 
+test('unregistered APIs return 404 without requiring an account', async ({ request, baseURL }) => {
+  for (const path of ['/api/ai', '/api/ai/chat', '/api/chat', '/api/openai', '/api/completions']) {
+    for (const method of ['get', 'post']) {
+      const response = await request[method](path, { headers: { Origin: baseURL } });
+      expect(response.status()).toBe(404);
+      expect(await response.json()).toEqual({ error: 'API route not found.' });
+    }
+  }
+  expect((await request.get('/api/documents')).status()).toBe(401);
+  expect((await request.get('/api/me')).status()).toBe(401);
+});
+
 test('D1 auth, ownership, CSRF, revisions, text validation and session invalidation', async ({ playwright, baseURL }) => {
   const contexts = await Promise.all([0, 1].map(() => playwright.request.newContext({
     baseURL, extraHTTPHeaders: { Origin: baseURL },
