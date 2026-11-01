@@ -908,7 +908,7 @@ function App() {
       <button className="icon mobile-menu" aria-label="Toggle documents" title="Toggle documents" aria-expanded={sidebar} aria-controls="document-sidebar" onClick={() => setSidebar(!sidebar)}><Icon name="panel" /></button>
       <a className="brand" href="/" aria-label="KhanhhNeLatex home"><span className="brand-mark">k</span><span className="brand-name">KhanhhNeLatex</span></a>
       <div className="top-actions">
-        <button className="quiet" onClick={() => setShowHelp(true)}><Icon name="help" /><span>Help</span></button>
+        <button className="quiet header-help" aria-label="Help" title="Help" onClick={() => setShowHelp(true)}><Icon name="help" /></button>
         {user ? <button className="account" aria-label={`Sign out ${user.username}`} title={`Sign out ${user.username}`} disabled={busy} onClick={async () => {
           try {
             await persist();
@@ -955,7 +955,7 @@ function App() {
         title="Drag or use arrow keys to resize. Enter or double-click to reset." />
       <main className="main">
         <div className="document-toolbar">
-          <div className="document-title"><span className="breadcrumb">Projects <span aria-hidden="true">/</span></span>
+          <div className="document-title">
             <span className="document-title-field">
               <span className="document-title-measure" aria-hidden="true">{`${current?.title || ''} `}</span>
               <input ref={titleInput} key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy} readOnly={mobile && tab === 'preview'}
@@ -966,27 +966,31 @@ function App() {
             </span>
             <span className="save-state" role="status" aria-atomic="true"><i />{saveState}</span>
           </div>
-          <div className="document-actions">
-            <button className="quiet" disabled={!current} onClick={() => download(active.current.source, `${active.current.title || 'document'}.tex`, 'text/plain;charset=utf-8')}><Icon name="download" />Export .tex</button>
-            <button className="save-button" disabled={!current || busy} onClick={sync}>{busy ? 'Saving...' : 'Save to account'}</button>
+          <div className="mobile-tabs" role="group" aria-label="Document mode">
+            <button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>Read</button>
+            <button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => { setEditorOpened(true); setTab('source'); }}>Edit</button>
           </div>
-        </div>
-        <div className="mobile-tabs" role="group" aria-label="Document mode">
-          <button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>Read</button>
-          <button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => { setEditorOpened(true); setTab('source'); }}>Edit</button>
+          <div className="document-actions">
+            <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} title={compiling ? 'Cancel compilation' : 'Compile (Ctrl/Cmd+Enter)'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>
+              {compiling ? <span className="spinner" /> : <Icon name="refresh" />}<span className="action-label">{compiling ? 'Cancel' : mobile && tab === 'source' ? 'Compile & read' : 'Compile'}</span>
+            </button>
+            <button className="quiet" aria-label="Export .tex" title="Export .tex" disabled={!current} onClick={() => download(active.current.source, `${active.current.title || 'document'}.tex`, 'text/plain;charset=utf-8')}><Icon name="download" /><span>.tex</span></button>
+            <button className="quiet" aria-label="Export PDF" title="Export PDF" disabled={!pdf} onClick={() => {
+              const latest = generatedPdf.current;
+              download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
+            }}><Icon name="download" /><span>PDF</span></button>
+            <button className="save-button" aria-label={busy ? 'Saving...' : 'Save to account'} title="Save to account" disabled={!current || busy} onClick={sync}><Icon name="cloud" /><span className="action-label">{busy ? 'Saving...' : 'Save'}</span></button>
+          </div>
         </div>
         <div className="panels" ref={sizing.panels}>
           <section id="source-panel" className={`editor-panel ${tab === 'source' ? 'mobile-active' : ''}`} aria-label="LaTeX source editor">
-            <div className="panel-toolbar source-toolbar"><span className="source-file-tab"><Icon name="file" />main.tex</span><span className="tiny">LaTeX</span>
-              <button className="compile-button source-compile" aria-label={compiling ? 'Cancel' : 'Compile'} disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>{compiling ? 'Cancel' : 'Compile & read'}</button>
-            </div>
             <div className="editor-container">
               {(!mobile || editorOpened) && <LatexEditor documentKey={`${current?.id || 'loading'}:${generation.current}`}
                 value={current?.source || ''} loading={!current} apiRef={editorApi}
                 onChange={(source, changes, before) => update({ source }, changes, before)}
                 onSave={() => compile()} onCompile={() => compile()} />}
             </div>
-            <div className="editor-footer"><span>LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span>
+            <div className="editor-footer"><span>main.tex <span className="footer-separator">·</span> LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span>
               {mobile && <label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label>}
             </div>
           </section>
@@ -994,16 +998,6 @@ function App() {
             aria-label="Source editor width" aria-orientation="vertical" aria-controls="source-panel"
             title="Drag or use arrow keys to resize. Enter or double-click to reset." />
           <section id="preview-panel" className={`preview-panel ${tab === 'preview' ? 'mobile-active' : ''}`} aria-label="PDF preview">
-            <div className="panel-toolbar preview-toolbar"><div className="preview-actions">
-              <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>
-                {compiling ? <span className="spinner" /> : <Icon name="refresh" />}{compiling ? 'Cancel' : 'Compile'}
-              </button><span className="preview-title">PDF preview</span>
-              <button className="quiet mobile-source-export" disabled={!current} onClick={() => download(active.current.source, `${active.current.title || 'document'}.tex`, 'text/plain;charset=utf-8')}><Icon name="download" />Export .tex</button>
-              <button className="quiet" disabled={!pdf} onClick={() => {
-                const latest = generatedPdf.current;
-                download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
-              }}><Icon name="download" /><span>Export PDF</span></button></div>
-            </div>
             <div className="preview-status">
               <span className="preview-status-reserve" aria-hidden="true" />
               <div className="preview-status-message" role="status" aria-atomic="true"><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
@@ -1024,8 +1018,10 @@ function App() {
               <div className="empty-preview"><Icon name="file" />
                 <h1>{compiling ? 'Preparing preview' : 'PDF preview'}</h1><p>{compiling ? 'Typesetting your document…' : 'Compile to see your document here.'}</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}><Icon name="refresh" />Compile your document</button></div>}
             </div>
-            <div className="compile-log-slot"><details className="compile-log" open={compileState.includes('See compilation log.')}><summary>Compilation log</summary><pre>{log || 'No compilation log available.'}</pre></details></div>
-            <div className="preview-footer"><span title={engineState}>{engineState}</span>{!mobile && <label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label>}<button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>
+            <div className="preview-bottom">
+              <div className="compile-log-slot"><details className="compile-log" open={compileState.includes('See compilation log.')}><summary>Compilation log</summary><pre>{log || 'No compilation log available.'}</pre></details></div>
+              <div className="preview-footer"><span title={engineState}>{engineState}</span>{!mobile && <label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label>}<button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>
+            </div>
           </section>
         </div>
       </main>

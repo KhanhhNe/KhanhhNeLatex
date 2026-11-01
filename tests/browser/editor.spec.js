@@ -332,9 +332,13 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 76
     await page.goto('/#workspace');
     await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
     if (viewport.width < 1050) await page.getByRole('button', { name: 'Read', exact: true }).click();
+    await expect(page.locator('.preview-toolbar,.source-toolbar')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Export .tex', exact: true })).toHaveCount(1);
+    const pdfViewport = await page.locator('.pdf-viewport').boundingBox();
+    expect(pdfViewport.height).toBeGreaterThan(viewport.width === 1920 ? 850 : viewport.width === 1366 ? 540 : 530);
     const geometry = () => page.evaluate(() => Object.fromEntries([
-      '.preview-toolbar', '.preview-status', '.pdf-area', '.compile-log-slot', '.preview-footer',
-      '.preview-actions .compile-button', '.preview-actions .quiet', '.live-preview', '.editor-container',
+      '.document-toolbar', '.preview-status', '.pdf-area', '.compile-log-slot', '.preview-footer',
+      '.document-actions .compile-button', '.document-actions .quiet', '.live-preview', '.editor-container',
     ].map(selector => {
       const box = document.querySelector(selector).getBoundingClientRect();
       return [selector, { x: box.x, y: box.y, width: box.width, height: box.height }];
@@ -450,7 +454,7 @@ test('mobile controls have readable text, 44px targets, labels and narrow/zoom r
     const state = document.querySelector('.save-state').getBoundingClientRect();
     return {
       stateWidth: state.width, stateHeight: state.height,
-      overflow: ['.topbar', '.top-actions', '.document-toolbar', '.document-actions', '.source-toolbar', '.mobile-tabs'].filter(selector => {
+      overflow: ['.topbar', '.top-actions', '.document-toolbar', '.document-actions', '.mobile-tabs'].filter(selector => {
         const el = document.querySelector(selector);
         return el.scrollWidth > el.clientWidth + 1;
       }),
@@ -470,8 +474,8 @@ test('editor chrome, source and dialogs use one restrained visual system', async
   await page.goto('/#workspace');
   await editorReady(page);
   await expect(page.locator('.topbar')).toHaveCSS('background-color', 'rgb(22, 22, 22)');
-  await expect(page.locator('.source-toolbar')).toHaveCSS('background-color', 'rgb(24, 32, 39)');
-  await expect(page.locator('.preview-toolbar')).toHaveCSS('background-color', 'rgb(35, 42, 48)');
+  await expect(page.locator('.editor-panel')).toHaveCSS('background-color', 'rgb(24, 32, 39)');
+  await expect(page.locator('.document-toolbar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(page.locator('.preview-panel')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
   await expect(page.locator('.preview-status')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
   await expect(page.locator('.compile-log')).toHaveCSS('background-color', 'rgb(35, 42, 48)');
@@ -480,10 +484,13 @@ test('editor chrome, source and dialogs use one restrained visual system', async
   await expect(pdf).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(pdf).toHaveCSS('color-scheme', 'light');
   await expect(pdf).toHaveCSS('filter', 'none');
-  await expect(page.locator('.source-file-tab')).toHaveText('main.tex');
-  expect(await page.locator('.topbar').evaluate(el => el.getBoundingClientRect().height)).toBe(56);
-  expect(await page.locator('.document-toolbar').evaluate(el => el.getBoundingClientRect().height)).toBe(64);
-  expect(await page.locator('.preview-toolbar').evaluate(el => el.getBoundingClientRect().height)).toBe(56);
+  await expect(page.locator('.editor-footer')).toContainText('main.tex');
+  expect(await page.locator('.topbar').evaluate(el => el.getBoundingClientRect().height)).toBeLessThanOrEqual(37);
+  expect(await page.locator('.document-toolbar').evaluate(el => el.getBoundingClientRect().height)).toBeLessThanOrEqual(45);
+  await expect(page.locator('.preview-toolbar,.source-toolbar')).toHaveCount(0);
+  for (const name of ['Compile', 'Export .tex', 'Export PDF', 'Save to account']) {
+    await expect(page.locator('.document-actions').getByRole('button', { name, exact: true })).toHaveCount(1);
+  }
   await page.getByRole('button', { name: 'Help', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
   await page.getByRole('button', { name: 'Close help' }).press('Escape');
