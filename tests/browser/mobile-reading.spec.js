@@ -87,6 +87,8 @@ for (const browserType of [chromium, webkit]) {
         await page.setViewportSize({ width: 1440, height: 900 });
         await editorReady(page);
         const desktopEditor = await page.locator('.monaco-editor').elementHandle();
+        await page.evaluate(() => latex.show('source'));
+        await expect(page.getByRole('button', { name: 'Read', exact: true, includeHidden: true })).toHaveAttribute('aria-pressed', 'false');
         await page.setViewportSize({ width, height });
         await expect(page.getByRole('button', { name: 'Read', exact: true })).toHaveAttribute('aria-pressed', 'true');
         expect(await desktopEditor.evaluate(element => element === document.querySelector('.monaco-editor'))).toBe(true);

@@ -96,6 +96,10 @@ for (const width of [1920, 390, 320]) {
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Import .tex', exact: false }).click();
     await page.locator('input[type=file]').setInputFiles({ name: 'dashboard.tex', mimeType: 'text/plain', buffer: Buffer.from('Imported from projects') });
-    await expectSource(page, 'Imported from projects');
+    await expect.poll(() => page.evaluate(() => latex.read())).toBe('Imported from projects');
+    if (width <= 1050) {
+      await expect(page.getByRole('button', { name: 'Read', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('.latex-editor')).toHaveCount(0);
+    } else await expectSource(page, 'Imported from projects');
   });
 }
