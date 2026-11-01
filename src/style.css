@@ -178,6 +178,12 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
   .panels{min-height:480px}
 }
 @media(max-width:360px){.topbar .brand{display:none}.topbar{flex-wrap:wrap}.top-actions{flex-wrap:wrap;gap:4px;max-width:100%}}
+@media(max-width:1050px){
+  .app{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  .document-title input{font-size:1rem}
+  .modal-backdrop{padding: max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+  .modal{max-height:calc(100dvh - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom)))}
+}
 @media(max-height:600px){
   .app{height:auto;min-height:100dvh}
   .workspace-view{min-height:100dvh}
