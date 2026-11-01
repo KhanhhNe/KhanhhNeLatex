@@ -159,18 +159,22 @@ export class GoogleFontLoader {
     // Never let optional device caching turn a successful download into a failed compile.
     if (cache && !saved) {
       try {
-        const keys = await cache.keys();
-        let cacheBytes = 0;
-        for (const key of keys) cacheBytes += Number((await cache.match(key))?.headers.get('Content-Length')) || MAX_FONT_BYTES;
-        while (keys.length >= MAX_FONT_FACES || cacheBytes + bytes.length > MAX_JOB_FONT_BYTES) {
-          const key = keys.shift();
-          if (!key) break;
-          cacheBytes -= Number((await cache.match(key))?.headers.get('Content-Length')) || MAX_FONT_BYTES;
-          await cache.delete(key);
-        }
-        await cache.put(metadataUrl, new Response(bytes, { headers: {
-          'Content-Type': 'font/ttf', 'Content-Length': String(bytes.length), 'X-Font-Url': fontUrl,
-        } }));
+        if (globalThis.navigator?.locks) {
+          await navigator.locks.request('google-tex-font-cache', { signal }, async () => {
+            const keys = await cache.keys();
+            let cacheBytes = 0;
+            for (const key of keys) cacheBytes += Number((await cache.match(key))?.headers.get('Content-Length')) || MAX_FONT_BYTES;
+            while (keys.length >= MAX_FONT_FACES || cacheBytes + bytes.length > MAX_JOB_FONT_BYTES) {
+              const key = keys.shift();
+              if (!key) break;
+              cacheBytes -= Number((await cache.match(key))?.headers.get('Content-Length')) || MAX_FONT_BYTES;
+              await cache.delete(key);
+            }
+            await cache.put(metadataUrl, new Response(bytes, { headers: {
+              'Content-Type': 'font/ttf', 'Content-Length': String(bytes.length), 'X-Font-Url': fontUrl,
+            } }));
+          });
+        } else console.warn('Persistent font caching requires Web Locks; bounded memory caching remains available.');
       } catch (error) { console.warn('Font cache write failed', error.name); }
     }
     while (this.memoryBytes + bytes.length > MAX_JOB_FONT_BYTES && this.memory.size) {

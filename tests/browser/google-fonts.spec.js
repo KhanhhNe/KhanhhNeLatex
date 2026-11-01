@@ -180,3 +180,26 @@ test('workspace exports real embedded fonts and unchanged source, preserves last
   await expectSource(page, fixture.replace('{Roboto}', '{Family Does Not Exist 987654321}'));
   expect(writes).toEqual([]);
 });
+
+test('concurrent font loaders preserve the shared device cache entry limit', async ({ page }) => {
+  await loadCompiler(page);
+  const bytes = Array.from(await readFile(new URL('Roboto-400.ttf', fontRoot)));
+  const result = await page.evaluate(async bytes => {
+    const { GoogleFontLoader, fontFace } = await import('/google-fonts.js');
+    await caches.delete('google-tex-fonts-v1');
+    await Promise.all(Array.from({ length: 20 }, async (_, index) => {
+      const family = `Test Family ${index}`;
+      const url = `https://fonts.gstatic.com/s/example/v1/test${index}.ttf`;
+      const loader = new GoogleFontLoader({ fetcher: async endpoint => endpoint.startsWith('/api')
+        ? Response.json({ family, weight: 400, italic: false, url }) : new Response(new Uint8Array(bytes)) });
+      await loader.face(fontFace(family), new AbortController().signal);
+    }));
+    const cache = await caches.open('google-tex-fonts-v1');
+    const keys = await cache.keys();
+    let total = 0;
+    for (const key of keys) total += Number((await cache.match(key)).headers.get('Content-Length'));
+    return { count: keys.length, total };
+  }, bytes);
+  expect(result.count).toBe(16);
+  expect(result.total).toBeLessThanOrEqual(24 * 1024 * 1024);
+});
