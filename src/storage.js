@@ -1,3 +1,5 @@
+import { newDocumentCode, validDocumentCode } from './document-url.js';
+
 const opened = new Promise((resolve, reject) => {
   const request = indexedDB.open('folio-drafts', 1);
   request.onupgradeneeded = () => request.result.createObjectStore('documents', { keyPath: 'id' });
@@ -15,7 +17,21 @@ async function transaction(mode, action) {
   });
 }
 export const drafts = {
-  all: () => transaction('readonly', store => store.getAll()),
+  all: () => transaction('readwrite', store => {
+    const request = store.getAll();
+    request.onsuccess = () => {
+      try {
+        const codes = new Set(request.result.filter(document => validDocumentCode(document.code)).map(document => document.code));
+        for (const document of request.result) {
+          if (validDocumentCode(document.code)) continue;
+          document.code = newDocumentCode(codes);
+          codes.add(document.code);
+          store.put(document);
+        }
+      } catch { store.transaction.abort(); }
+    };
+    return request;
+  }),
   put: document => transaction('readwrite', store => store.put(document)),
   delete: id => transaction('readwrite', store => store.delete(id)),
 };

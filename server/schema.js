@@ -14,6 +14,7 @@ export const sessions = sqliteTable('sessions', {
 }, table => [index('sessions_expiry').on(table.expires_at)]);
 export const documents = sqliteTable('documents', {
   id: text('id').primaryKey(),
+  code: text('code').unique(),
   user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   source: text('source').notNull(),
