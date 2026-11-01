@@ -75,7 +75,11 @@ function App() {
   localDocuments.current = documents;
   const visibleView = useRef(view);
   visibleView.current = view;
-  const sizing = useWorkspaceResize(view === 'workspace');
+  const [desktopSidebarHidden, setDesktopSidebarHidden] = useState(() => {
+    try { return localStorage.getItem('workspace-sidebar-hidden-v1') === 'true'; }
+    catch (reason) { console.warn('Sidebar preference could not be read.', reason.name); return false; }
+  });
+  const sizing = useWorkspaceResize(view === 'workspace', desktopSidebarHidden);
   const [auth, setAuth] = useState(null);
   const [busy, setBusy] = useState(false);
   const [compiling, setCompiling] = useState(false);
@@ -906,6 +910,12 @@ function App() {
     <header className="topbar">
       <button className="icon projects-back" aria-label="Your projects" title="Your projects" onClick={() => showProjects()}><Icon name="back" /></button>
       <button className="icon mobile-menu" aria-label="Toggle documents" title="Toggle documents" aria-expanded={sidebar} aria-controls="document-sidebar" onClick={() => setSidebar(!sidebar)}><Icon name="panel" /></button>
+      <button className="icon desktop-sidebar-toggle" aria-label="Toggle documents" title={desktopSidebarHidden ? 'Show documents' : 'Hide documents'} aria-expanded={!desktopSidebarHidden} aria-controls="document-sidebar" onClick={() => {
+        const hidden = !desktopSidebarHidden;
+        setDesktopSidebarHidden(hidden);
+        try { localStorage.setItem('workspace-sidebar-hidden-v1', String(hidden)); }
+        catch (reason) { console.warn('Sidebar preference could not be saved.', reason.name); }
+      }}><Icon name="panel" /></button>
       <a className="brand" href="/" aria-label="KhanhhNeLatex home"><span className="brand-mark">k</span><span className="brand-name">KhanhhNeLatex</span></a>
       <div className="top-actions">
         <button className="quiet header-help" aria-label="Help" title="Help" onClick={() => setShowHelp(true)}><Icon name="help" /></button>
@@ -922,7 +932,7 @@ function App() {
         }}><Icon name="user" /><span className="account-name">{user.username}</span><span>Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}><Icon name="user" />Sign in</button>}
       </div>
     </header>
-    <div className="workspace" ref={sizing.workspace}>
+    <div className={`workspace ${desktopSidebarHidden ? 'sidebar-hidden' : ''}`} ref={sizing.workspace}>
       <aside id="document-sidebar" className={`sidebar ${sidebar ? 'open' : ''}`}>
         <div className="sidebar-heading"><span>Documents</span><Icon name="panel" /></div>
         <button className="new-document" onClick={() => newDocument()} disabled={busy}><Icon name="plus" /><span>New document</span></button>
@@ -950,7 +960,7 @@ function App() {
           <button className="delete-button" onClick={remove} disabled={!current || busy}>Delete current document</button>
         </div>
       </aside>
-      <div ref={sizing.sidebarHandle} className="pane-separator" role="separator" tabIndex={0}
+      <div ref={sizing.sidebarHandle} className="pane-separator sidebar-handle" role="separator" tabIndex={0}
         aria-label="Document sidebar width" aria-orientation="vertical" aria-controls="document-sidebar"
         title="Drag or use arrow keys to resize. Enter or double-click to reset." />
       <main className="main">
@@ -980,6 +990,21 @@ function App() {
               download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
             }}><Icon name="download" /><span>PDF</span></button>
             <button className="save-button" aria-label={busy ? 'Saving...' : 'Save to account'} title="Save to account" disabled={!current || busy} onClick={sync}><Icon name="cloud" /><span className="action-label">{busy ? 'Saving...' : 'Save'}</span></button>
+            {!mobile && desktopSidebarHidden && <>
+              <button className="quiet" aria-label="More document actions" title="More document actions" popoverTarget="document-overflow"><Icon name="more" /></button>
+              <div id="document-overflow" className="document-overflow" popover="auto" role="group" aria-label="Document actions" onToggle={event => {
+                if (event.nativeEvent.newState !== 'open') return;
+                const menu = event.currentTarget;
+                const trigger = menu.previousElementSibling.getBoundingClientRect();
+                menu.style.top = `${Math.max(8, Math.min(trigger.bottom + 4, innerHeight - menu.offsetHeight - 8))}px`;
+              }} onClick={event => {
+                if (event.target.closest('button')) event.currentTarget.hidePopover();
+              }}>
+                <button disabled={busy} onClick={() => newDocument()}><Icon name="plus" />New document</button>
+                <button disabled={busy} onClick={() => fileInput.current.click()}><Icon name="upload" />Import .tex file</button>
+                <button className="delete-button" disabled={!current || busy} onClick={remove}>Delete current document</button>
+              </div>
+            </>}
           </div>
         </div>
         <div className="panels" ref={sizing.panels}>

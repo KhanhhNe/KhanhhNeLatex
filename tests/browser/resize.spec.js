@@ -200,3 +200,68 @@ test('stale widths, scaled desktop and narrow-screen tabs remain bounded without
     }
   }
 });
+
+test('desktop sidebar collapse restores pane preferences, persists and keeps mobile drawer independent', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto('/#workspace');
+  await editorReady(page);
+  await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });
+  await sidebar(page).focus();
+  await page.keyboard.press('ArrowRight');
+  const preference = await page.evaluate(() => localStorage.getItem('workspace-layout-v1'));
+  const previousWidth = await width(page.locator('#source-panel'));
+  const viewer = await page.locator('.pdf-viewer').elementHandle();
+  const url = await page.locator('.pdf-viewer').getAttribute('data-src');
+  const compile = await page.evaluate(() => latex.timings().compile);
+  const toggle = page.getByRole('button', { name: 'Toggle documents', exact: true });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#document-sidebar')).toBeHidden();
+  await expect(sidebar(page)).toBeHidden();
+  expect(await width(page.locator('#source-panel'))).toBeGreaterThan(previousWidth + 100);
+  await aligned(page);
+  expect(await page.locator('.pdf-viewer').getAttribute('data-src')).toBe(url);
+  expect(await viewer.evaluate(element => element.isConnected)).toBe(true);
+  expect(await page.evaluate(() => latex.timings().compile)).toEqual(compile);
+  expect(await page.evaluate(() => localStorage.getItem('workspace-layout-v1'))).toBe(preference);
+  await page.reload();
+  await editorReady(page);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(sidebar(page)).toBeVisible();
+  expect(await width(page.locator('#source-panel'))).toBeCloseTo(previousWidth, 0);
+  await toggle.click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: 'More document actions' })).toHaveCount(0);
+  await toggle.click();
+  await expect(page.locator('#document-sidebar')).toBeVisible();
+  await toggle.click();
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await expect(page.locator('#document-sidebar')).toBeHidden();
+  await aligned(page);
+});
+
+test('desktop document overflow supports keyboard, Escape, outside dismissal and document creation', async ({ page }) => {
+  await page.goto('/#workspace');
+  await editorReady(page);
+  await page.getByRole('button', { name: 'Toggle documents', exact: true }).click();
+  const more = page.getByRole('button', { name: 'More document actions' });
+  const menu = page.getByRole('group', { name: 'Document actions', exact: true });
+  await more.focus();
+  await page.keyboard.press('Enter');
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(menu.getByRole('button', { name: 'New document', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(more).toBeFocused();
+  await more.click();
+  await page.locator('.document-title input').click();
+  await expect(menu).toBeHidden();
+  await more.click();
+  await menu.getByRole('button', { name: 'New document', exact: true }).click();
+  await expect(menu).toBeHidden();
+  await expect(page.locator('#document-sidebar')).toBeHidden();
+  await expect(page.locator('.document-row')).toHaveCount(2);
+  await expect(page.getByRole('textbox', { name: 'Document title', exact: true })).toHaveValue('Untitled paper');
+});
