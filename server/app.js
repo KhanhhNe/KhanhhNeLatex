@@ -5,6 +5,8 @@ import { users, sessions, documents, authLimits } from './schema.js';
 import { hashPassword, verifyPassword, digest, newToken, validateCredentials, validateDocument } from './security.js';
 import { googleFontMetadata } from './fonts.js';
 import { newDocumentCode, validDocumentCode } from '../src/document-url.js';
+import { registerDocumentSync, documentFields } from './document-sync.js';
+import { createText, editText, encodeState } from '../src/crdt.js';
 
 const SESSION_MS = 7 * 86400000;
 const dummyHash = 'scrypt$16384$8$1$00000000000000000000000000000000$' + '0'.repeat(64);
@@ -21,6 +23,7 @@ export function createApp(env) {
       return res.status(403).json({ error: 'Request origin is not allowed.' });
     next();
   });
+  app.use('/api/documents/sync', express.json({ limit: '2mb', strict: true }));
   app.use(express.json({ limit: '650kb', strict: true }));
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.get('/api/fonts', async (req, res) => {
@@ -86,6 +89,13 @@ export function createApp(env) {
     next();
   });
   app.get('/api/me', (req, res) => res.json({ user: req.user }));
+  const synchronize = registerDocumentSync(app, db);
+  function bootstrapSync(req, res) {
+    const replica = createText({ code: req.body.code, source: req.body.source });
+    try { req.body.crdt_state = encodeState(replica); }
+    finally { replica.destroy(); }
+    return synchronize(req, res);
+  }
   async function ensureCode(document, ownerId) {
     if (document.code) return document;
     // Older deployed code may still insert rows during the expand/deploy window.
@@ -109,15 +119,13 @@ export function createApp(env) {
   });
   app.get('/api/documents/by-code/:code', async (req, res) => {
     if (!validDocumentCode(req.params.code)) return res.status(404).json({ error: 'Document not found.' });
-    const document = await db.select({
-      id: documents.id, code: documents.code, title: documents.title, source: documents.source,
-      revision: documents.revision, updated_at: documents.updated_at,
-    }).from(documents).where(and(eq(documents.code, req.params.code), eq(documents.user_id, req.user.id))).get();
+    const document = await db.select(documentFields).from(documents)
+      .where(and(eq(documents.code, req.params.code), eq(documents.user_id, req.user.id))).get();
     if (!document) return res.status(404).json({ error: 'Document not found.' });
     res.json({ document });
   });
   app.get('/api/documents/:id', async (req, res) => {
-    const document = await db.select({ id: documents.id, code: documents.code, title: documents.title, source: documents.source, revision: documents.revision, updated_at: documents.updated_at })
+    const document = await db.select(documentFields)
       .from(documents).where(and(eq(documents.id, req.params.id), eq(documents.user_id, req.user.id))).get();
     if (!document) return res.status(404).json({ error: 'Document not found.' });
     res.json({ document: await ensureCode(document, req.user.id) });
@@ -127,6 +135,10 @@ export function createApp(env) {
     if (error) return res.status(400).json({ error });
     if (req.body.code !== undefined && !validDocumentCode(req.body.code))
       return res.status(400).json({ error: 'Document code must contain 8 URL-safe characters.' });
+    if (req.body.code && await db.select({ id: documents.id }).from(documents)
+      .where(and(eq(documents.code, req.body.code), eq(documents.user_id, req.user.id))).get()) {
+      return bootstrapSync(req, res);
+    }
     const document = { id: crypto.randomUUID(), code: req.body.code || newDocumentCode(),
       title: req.body.title.trim(), source: req.body.source, revision: 1, updated_at: Date.now() };
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -134,8 +146,12 @@ export function createApp(env) {
         SELECT ${document.id},${document.code},${req.user.id},${document.title},${document.source},1,${document.updated_at}
         WHERE (SELECT COUNT(*) FROM documents WHERE user_id=${req.user.id})<100`);
       if (result.meta.changes) return res.status(201).json({ document });
-      const collision = await db.select({ id: documents.id }).from(documents).where(eq(documents.code, document.code)).get();
+      const collision = await db.select({ id: documents.id, user_id: documents.user_id }).from(documents).where(eq(documents.code, document.code)).get();
       if (!collision) return res.status(409).json({ error: 'Limit of 100 cloud documents reached. Export or delete a document first.' });
+      if (collision.user_id === req.user.id) {
+        req.body.code = document.code;
+        return bootstrapSync(req, res);
+      }
       document.code = newDocumentCode();
     }
     throw new Error('Could not allocate document code.');
@@ -144,9 +160,22 @@ export function createApp(env) {
     const error = validateDocument(req.body);
     if (error || !Number.isSafeInteger(req.body.revision) || req.body.revision < 1)
       return res.status(400).json({ error: error || 'A valid revision is required.' });
+    const owned = and(eq(documents.id, req.params.id), eq(documents.user_id, req.user.id));
+    const current = await db.select(documentFields).from(documents).where(owned).get();
+    if (!current) return res.status(404).json({ error: 'Document not found.' });
+    if (current.revision !== req.body.revision)
+      return res.status(409).json({ error: 'This document changed in another tab. Retry synchronization with its current history.' });
+    const coded = await ensureCode(current, req.user.id);
+    let crdt_state;
+    const replica = createText(coded);
+    try {
+      editText(replica, req.body.source);
+      crdt_state = encodeState(replica);
+    } catch (reason) { return res.status(400).json({ error: reason.message }); }
+    finally { replica.destroy(); }
     const updated_at = Date.now();
     const result = await db.update(documents).set({
-      title: req.body.title.trim(), source: req.body.source, revision: sql`${documents.revision}+1`, updated_at,
+      title: req.body.title.trim(), source: req.body.source, crdt_state, revision: sql`${documents.revision}+1`, updated_at,
     }).where(and(eq(documents.id, req.params.id), eq(documents.user_id, req.user.id), eq(documents.revision, req.body.revision))).run();
     if (!result.meta.changes) {
       const owned = await db.select({ id: documents.id }).from(documents)

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { textChange } from '../crdt.js';
 import './LatexEditor.css';
 
 const validSource = value => value.length <= 100000 && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffd]/u.test(value);
@@ -115,8 +116,10 @@ export default function LatexEditor({
       };
       host.current.addEventListener('beforeinput', guard, true);
       host.current.addEventListener('paste', guard, true);
-      change = model.onDidChangeContent(() => {
-        if (replacing.current) return;
+      let previousValue = model.getValue();
+      change = model.onDidChangeContent(event => {
+        if (replacing.current) { previousValue = model.getValue(); return; }
+        const before = previousValue;
         const next = model.getValue();
         if (!validSource(next)) {
           setError('Source must be valid text, at most 100,000 characters. The last edit was not accepted.');
@@ -129,7 +132,8 @@ export default function LatexEditor({
           return;
         }
         setError('');
-        latest.current.onChange(next);
+        previousValue = next;
+        latest.current.onChange(next, event.changes, before);
       });
       resize = new ResizeObserver(() => {
         if (host.current?.clientWidth && host.current?.clientHeight) {
@@ -196,10 +200,17 @@ export default function LatexEditor({
     }
     instance.updateOptions({ readOnly: readOnly || loading, ariaLabel });
     const model = instance.getModel();
-    if (model.getValue() !== value) {
+    const normalizedValue = value.replace(/\r\n?/g, '\n');
+    if (model.getValue() !== normalizedValue) {
       const selection = instance.getSelections();
+      const before = model.getValue();
+      const change = textChange(before, normalizedValue);
+      const from = model.getPositionAt(change.rangeOffset), to = model.getPositionAt(change.rangeOffset + change.rangeLength);
       replacing.current = true;
-      instance.executeEdits('external-source', [{ range: model.getFullModelRange(), text: value }]);
+      instance.executeEdits('external-source', [{ range: {
+        startLineNumber: from.lineNumber, startColumn: from.column,
+        endLineNumber: to.lineNumber, endColumn: to.column,
+      }, text: change.text }]);
       replacing.current = false;
       if (selection) instance.setSelections(selection);
     }

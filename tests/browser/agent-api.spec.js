@@ -100,16 +100,18 @@ test('window.latex opens, switches, reads, edits, compiles and reports logs and 
 
 test('window.latex save awaits the account request and Help documents the API', async ({ page }) => {
   const requests = [];
+  let saved;
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', route => {
     requests.push(route.request().method());
-    if (route.request().method() === 'GET') return route.fulfill({ json: { documents: [] } });
-    const posted = route.request().postDataJSON();
-    return route.fulfill({ json: { document: { id: 'cloud-1', code: posted.code, revision: 1 } } });
+    return route.fulfill({ json: { documents: saved ? [saved] : [] } });
   });
-  await page.route('**/api/documents/cloud-1', route => {
+  await page.route('**/api/documents/sync', route => {
     requests.push(route.request().method());
-    return route.fulfill({ json: { revision: 2 } });
+    const posted = route.request().postDataJSON();
+    const changed = saved && (saved.crdt_state !== posted.crdt_state || saved.title !== posted.title);
+    saved = { ...posted, id: 'cloud-1', revision: saved ? saved.revision + Number(changed) : 1 };
+    return route.fulfill({ json: { document: saved } });
   });
   await page.goto('/');
   await page.evaluate(() => latex.ready());
@@ -119,7 +121,7 @@ test('window.latex save awaits the account request and Help documents the API', 
   const second = await page.evaluate(() => latex.save());
   expect(second).toMatchObject({ ok: true, cloudId: 'cloud-1', revision: 2, dirty: false });
   expect(requests).toContain('POST');
-  expect(requests).toContain('PUT');
+  expect(requests.filter(method => method === 'POST').length).toBeGreaterThanOrEqual(2);
   expect((await page.evaluate(() => latex.timings())).accountSaveRoundTripMs).toBeGreaterThanOrEqual(0);
   expect(await page.evaluate(() => latex.list()[0])).toMatchObject({ cloudId: 'cloud-1', local: true });
 

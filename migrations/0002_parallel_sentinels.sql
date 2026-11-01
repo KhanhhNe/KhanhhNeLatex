@@ -1,0 +1,1 @@
+ALTER TABLE `documents` ADD `crdt_state` text;

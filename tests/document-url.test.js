@@ -45,5 +45,10 @@ test('additive migration backfills unique codes and permits old-version inserts'
     insert.run('old-deploy');
     assert.equal(db.prepare("SELECT code FROM documents WHERE id='old-deploy'").get().code, null);
     assert.throws(() => db.prepare('UPDATE documents SET code=? WHERE id=?').run(rows[0].code, 'old-deploy'), /UNIQUE/);
+    db.exec(readFileSync(new URL('../migrations/0002_parallel_sentinels.sql', import.meta.url), 'utf8'));
+    assert.equal(db.prepare("SELECT source,crdt_state FROM documents WHERE id='old-deploy'").get().source, 'source');
+    assert.equal(db.prepare("SELECT crdt_state FROM documents WHERE id='old-deploy'").get().crdt_state, null);
+    insert.run('old-deploy-after-crdt');
+    assert.equal(db.prepare("SELECT crdt_state FROM documents WHERE id='old-deploy-after-crdt'").get().crdt_state, null);
   } finally { db.close(); }
 });

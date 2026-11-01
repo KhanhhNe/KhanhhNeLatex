@@ -52,3 +52,13 @@ test('does not merge documents linked to another account', () => {
   assert.equal(documents.length, 2);
   assert.equal(documents.find(document => document.title === 'Local').cloudAvailable, false);
 });
+
+test('same-code unlinked drafts and account documents form one logical document on sign-in', () => {
+  const local = { id: 'device-id', code: 'Doc_1234', title: 'Device', source: 'offline', owner: null, dirty: true, updated_at: 20 };
+  const remote = { id: 'account-id', code: local.code, title: 'Account', updated_at: 30 };
+  const documents = mergeDocuments([local], [remote], 'owner');
+  assert.equal(documents.length, 1);
+  assert.equal(documents[0].source, 'offline');
+  assert.equal(documents[0].cloudAvailable, true);
+  assert.equal(mergeDocuments([{ ...local, owner: 'different' }], [remote], 'owner').length, 2);
+});

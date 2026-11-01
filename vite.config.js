@@ -13,6 +13,9 @@ export default defineConfig({
       ]) this.emitFile({ type: 'asset', fileName, source: readFileSync(new URL(`./node_modules/monaco-editor/${source}`, import.meta.url), 'utf8') });
       this.emitFile({ type: 'asset', fileName: 'licenses/pdfjs-LICENSE.txt',
         source: readFileSync(new URL('./node_modules/pdfjs-dist/LICENSE', import.meta.url), 'utf8') });
+      for (const packageName of ['yjs', 'lib0', 'isomorphic.js'])
+        this.emitFile({ type: 'asset', fileName: `licenses/${packageName}-LICENSE.txt`,
+          source: readFileSync(new URL(`./node_modules/${packageName}/LICENSE`, import.meta.url), 'utf8') });
       const hashes = {};
       for (const directory of ['cmaps', 'standard_fonts', 'wasm']) {
         for (const file of readdirSync(new URL(`./node_modules/pdfjs-dist/${directory}/`, import.meta.url))) {
