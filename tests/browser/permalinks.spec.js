@@ -15,6 +15,7 @@ test('selection, rename, refresh and browser history preserve document identitie
   await expect(page).toHaveURL(/\/documents\/resume-first-paper\/[A-Za-z0-9_-]{8}$/);
   const first = new URL(page.url()).pathname;
   await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await expect(page).not.toHaveURL(new RegExp(first + '$'));
   await editorReady(page);
   await fillSource(page, 'Second device draft');
   await expectSource(page, 'Second device draft');
