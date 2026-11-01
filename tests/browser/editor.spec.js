@@ -476,8 +476,8 @@ test('help and sign-in dialogs trap keyboard focus and restore it on Escape', as
   const closeHelp = page.getByRole('button', { name: 'Close help' });
   await expect(closeHelp).toBeFocused();
   await closeHelp.press('Shift+Tab');
-  await expect(dialog.getByRole('link')).toBeFocused();
-  await dialog.getByRole('link').press('Tab');
+  await expect(dialog.getByRole('link').last()).toBeFocused();
+  await dialog.getByRole('link').last().press('Tab');
   await expect(closeHelp).toBeFocused();
   await closeHelp.press('Escape');
   await expect(dialog).toHaveCount(0);

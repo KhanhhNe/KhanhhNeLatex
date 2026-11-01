@@ -6,19 +6,144 @@
       "sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef"
     },
     {
+      "path": "/compiler/dvipdf-worker.js",
+      "size": 239,
+      "sha256": "46d0aa2ef70e452f319a40cf53a0f497e770589cec891a413c1f1136845618fa"
+    },
+    {
       "path": "/compiler/manifest.js",
       "size": 5683,
       "sha256": "29b10d9e7294ac4e02e215213b84a6e66a456c289d09f72c3e1a4f63d8ec7250"
     },
     {
+      "path": "/compiler/native-manifest.js",
+      "size": 7321,
+      "sha256": "378b8ee24713c42b82bf7779166b5ae009731e58b67324169be6b010428c32a9"
+    },
+    {
+      "path": "/compiler/native-package-loader.js",
+      "size": 836,
+      "sha256": "8666a64807be0af4741d05237684a5c04a427dfb0451d9b474e69508784522e0"
+    },
+    {
+      "path": "/compiler/native-tex/ckx.map",
+      "size": 1289,
+      "sha256": "52859584f1baa4aea9e5c6318ded82b1b5bfa713dcdc945bda7e26b206c8bdc4"
+    },
+    {
+      "path": "/compiler/native-tex/expl3.sty",
+      "size": 4381,
+      "sha256": "9fdf92101fe3fc44c6b008dc097d5df6f4e5047f943d3fc75b1e6cbb970a0fcb"
+    },
+    {
+      "path": "/compiler/native-tex/fontspec-xetex.sty",
+      "size": 161688,
+      "sha256": "60f8a6de5a88dfaf6ccc9467c37a21de8a53210a46d866a6d3b43f86257d2e6f"
+    },
+    {
+      "path": "/compiler/native-tex/fontspec.cfg",
+      "size": 549,
+      "sha256": "f31d038ca5322ef4fc3fbe391f42695bf1305567a04b6ac1005964703dd1232a"
+    },
+    {
+      "path": "/compiler/native-tex/fontspec.sty",
+      "size": 1655,
+      "sha256": "ef26107b179df0be5a0ca01f3e4be48718f2d7904f63673264bbcf97969169b1"
+    },
+    {
+      "path": "/compiler/native-tex/glyphlist.txt",
+      "size": 77146,
+      "sha256": "1d090feeb2cef487186d67f42d0b106bf09abf67e2cd94ab99e238d57c561d56"
+    },
+    {
+      "path": "/compiler/native-tex/kanjix.map",
+      "size": 6679,
+      "sha256": "eca6565acb20a4b68d079d31e9fcf7106968a2a4da658ad4626559819f1f3d8f"
+    },
+    {
+      "path": "/compiler/native-tex/l3backend-xdvipdfmx.def",
+      "size": 24128,
+      "sha256": "3152a0f1cad589c575ac7997f66b4f5d3a62f04c73a1d7c73c5269adcb9b4665"
+    },
+    {
+      "path": "/compiler/native-tex/lmroman10-bold.otf",
+      "size": 111240,
+      "sha256": "102fe06c430a8b681b2bf6876b7cd967ae4d47b4b6b41d915eb7913b726d9fb1"
+    },
+    {
+      "path": "/compiler/native-tex/lmroman10-bolditalic.otf",
+      "size": 118204,
+      "sha256": "c37a28eed7a6e03f792b98b5e5f637b2fcda378bb4855f99284f1a88fe35f124"
+    },
+    {
+      "path": "/compiler/native-tex/lmroman10-italic.otf",
+      "size": 118828,
+      "sha256": "c1fce25075567bb8dbf2151658c3b442690041db17a2d49fc9e55905ea5b7169"
+    },
+    {
+      "path": "/compiler/native-tex/lmroman10-regular.otf",
+      "size": 111536,
+      "sha256": "1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852"
+    },
+    {
+      "path": "/compiler/native-tex/pdfglyphlist.txt",
+      "size": 5117,
+      "sha256": "9d7bee92b7cfdaa6e03c7df895003145ed982be0bf6d1e78fdd5eb71bf4945aa"
+    },
+    {
+      "path": "/compiler/native-tex/swiftlatexxetex.fmt",
+      "size": 22791842,
+      "sha256": "fecae874377a2f7cb31811e41edabbda1e19f762d00630a8faa9fb12043b5e5f"
+    },
+    {
+      "path": "/compiler/native-tex/tex-text.tec",
+      "size": 398,
+      "sha256": "511836c4d363daffa1c789956bdb44b89ac526ef3e4215a846c313b717447d40"
+    },
+    {
+      "path": "/compiler/native-tex/texglyphlist.txt",
+      "size": 10227,
+      "sha256": "4b11bf2dcd65b004ee2023c5392339aaf89429bef0d3ace13b7b098d108cd991"
+    },
+    {
+      "path": "/compiler/native-tex/ts1cmr.fd",
+      "size": 2431,
+      "sha256": "0c41f180ac83d031cf99284624548e6a9b5939517e73dcb8cbdb43cd59c6f947"
+    },
+    {
+      "path": "/compiler/native-tex/tuenc.def",
+      "size": 27440,
+      "sha256": "e18acd059205ed7a1dd26f0f0246e8fe93281ccf859baf23cb6c75552e5ad033"
+    },
+    {
+      "path": "/compiler/native-tex/xparse.sty",
+      "size": 81717,
+      "sha256": "4f7e05b80964048c825a4dd3f74557f4e366e0cc6cdbea027ba9373b1a7abcae"
+    },
+    {
+      "path": "/compiler/native-worker.js",
+      "size": 1799,
+      "sha256": "d4044cea89e7952733c291fdb6af33e8ff79f47e1b5e829974fc9c8aaf75d3c9"
+    },
+    {
       "path": "/compiler/NOTICE.txt",
-      "size": 2909,
-      "sha256": "352169bb35cb60f388d17dd34a24c5319492b64edbdbbf9ef2854d35f69c62a9"
+      "size": 3480,
+      "sha256": "400bcfe9d2fcb34dc4ea2a7d263603230988bebb3a9a267170d9655bafe6af0d"
     },
     {
       "path": "/compiler/swiftlatex-source.tar.gz",
       "size": 11561472,
       "sha256": "1ce48c972ef7c4801f6c30b039da12e8b08cef02993a40374d7f1089f6643060"
+    },
+    {
+      "path": "/compiler/swiftlatexdvipdfm.js",
+      "size": 77085,
+      "sha256": "80d0620536e0a13afaf7ddcf0ccc00c758a6735313a4e962b3a5c8779058ac40"
+    },
+    {
+      "path": "/compiler/swiftlatexdvipdfm.wasm",
+      "size": 700674,
+      "sha256": "1bf8c0d424c87c1548d9d22d29251aa3308506fa6acc29d4f08dcd77ccc1f9b1"
     },
     {
       "path": "/compiler/swiftlatexpdftex.js",
@@ -29,6 +154,16 @@
       "path": "/compiler/swiftlatexpdftex.wasm",
       "size": 1782913,
       "sha256": "154d08cbb298191cefe1bdd9e47a909d60fc7a96fce5f2319bfc6878c5b61cf1"
+    },
+    {
+      "path": "/compiler/swiftlatexxetex.js",
+      "size": 90170,
+      "sha256": "238181805c9d8ffbb231d2ba09323145d485cf85847fc34b8c2168e7b886adb3"
+    },
+    {
+      "path": "/compiler/swiftlatexxetex.wasm",
+      "size": 3073718,
+      "sha256": "dd7f4f8fe8b07b64c058683edd0298afa1998cfae461cab71bd2571e27ffb673"
     },
     {
       "path": "/compiler/tex/amsbsy.sty",
@@ -899,6 +1034,11 @@
       "path": "/compiler/worker.js",
       "size": 1038,
       "sha256": "d9de853a332ba3a65067577792e5e7acf7eb1b3b5d65a628e437d630f627a00b"
+    },
+    {
+      "path": "/compiler/xetex-worker.js",
+      "size": 234,
+      "sha256": "5ec740bdf36fc8edeec63a780588b48117452d54ba59f8f1e1c17cc5334a48ef"
     }
   ]
 }

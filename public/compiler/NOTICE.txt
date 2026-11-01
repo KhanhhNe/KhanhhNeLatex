@@ -8,13 +8,13 @@ Application source (GNU AGPL v3 only): /source.tar.gz
 Full license text: /compiler/AGPL-3.0.txt
 
 SwiftLaTeX / SwiftLab, Copyright 2018-2022, GNU AGPL v3.
-Unmodified pdfTeX WebAssembly and JS assets from release v20022022:
+Unmodified pdfTeX, XeTeX and DVIPDF WebAssembly and JS assets from release v20022022:
 https://github.com/SwiftLaTeX/SwiftLaTeX/releases/tag/v20022022
 Corresponding full engine source and build scripts:
 /compiler/swiftlatex-source.tar.gz
 https://github.com/SwiftLaTeX/SwiftLaTeX/tree/v20022022
 
-The worker.js adapter and manifest.js are original application code.
+The worker adapters and local package manifests are original application code.
 The source archive includes all application source and build instructions.
 
 LaTeX format file from SwiftLaTeX/Texlive-Ondemand:
@@ -25,6 +25,13 @@ Source, documentation and licenses are available from the upstream projects:
 LaTeX base, tools/keyval (LPPL 1.3c+): https://ctan.org/pkg/latex-base
 https://ctan.org/pkg/latex-tools
 LaTeX backend (LPPL 1.3c+): https://ctan.org/pkg/l3backend
+Fontspec and LaTeX3/xparse (LPPL 1.3c+):
+https://ctan.org/pkg/fontspec
+https://ctan.org/pkg/l3kernel
+https://ctan.org/pkg/l3packages
+XeTeX font mapping data and glyph lists (upstream TeX Live licenses):
+https://ctan.org/pkg/xetex
+https://github.com/TeX-Live/texlive-source
 AMS math (LPPL 1.3c+): https://ctan.org/pkg/amsmath
 AMS fonts and symbols (SIL OFL): https://ctan.org/pkg/amsfonts
 geometry (LPPL 1.3c+): https://ctan.org/pkg/geometry
@@ -53,6 +60,10 @@ https://ctan.org/pkg/lcdf-typetools
 
 Package acquisition mirror: https://texlive.texlyre.org/
 The deployment makes NO requests to that mirror or any external package server.
+Explicit Google font declarations additionally use Google's CSS metadata service
+and download TrueType fonts directly in the browser from fonts.gstatic.com.
+Their per-family licenses apply: https://fonts.google.com
+The default pdfTeX path makes no Google font requests.
 The reduced pdftex.map contains entries only for bundled fonts; the added
 Latin Modern entries are from the upstream lm.map. Font files, package files
 and format are unmodified. Asset hashes are in assets.sha256.json.

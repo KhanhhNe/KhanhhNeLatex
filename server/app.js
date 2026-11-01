@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { and, eq, gt, lt, desc, sql } from 'drizzle-orm';
 import { users, sessions, documents, authLimits } from './schema.js';
 import { hashPassword, verifyPassword, digest, newToken, validateCredentials, validateDocument } from './security.js';
+import { googleFontMetadata } from './fonts.js';
 
 const SESSION_MS = 7 * 86400000;
 const dummyHash = 'scrypt$16384$8$1$00000000000000000000000000000000$' + '0'.repeat(64);
@@ -21,6 +22,12 @@ export function createApp(env) {
   });
   app.use(express.json({ limit: '650kb', strict: true }));
   app.get('/api/health', (req, res) => res.json({ ok: true }));
+  app.get('/api/fonts', async (req, res) => {
+    const result = await googleFontMetadata(req.query);
+    const { status, ...body } = result;
+    if (status === 200) res.set('Cache-Control', 'public, max-age=86400');
+    res.status(status).json(body);
+  });
 
   async function throttle(req, res, next) {
     const bucket = Math.floor(Date.now() / 900000);

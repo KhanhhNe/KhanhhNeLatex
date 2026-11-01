@@ -16,7 +16,7 @@ npm run preview
 # http://127.0.0.1:8787 -- real Cloudflare Workers runtime + local D1
 ```
 
-In another terminal, `npm run dev` optionally serves Vite HMR at port 5173 and proxies API requests to the local Worker. Local API mutations require the configured origin: use the main 8787 preview for sign-in/cloud-save testing. Compile assets are included locally, never fetched from an external service at runtime.
+In another terminal, `npm run dev` optionally serves Vite HMR at port 5173 and proxies API requests to the local Worker. Local API mutations require the configured origin: use the main 8787 preview for sign-in/cloud-save testing. Compiler/package assets are included locally. Documents with explicit Google font declarations may download fonts as described below; other compilation remains self-hosted.
 
 ```powershell
 npm test
@@ -40,9 +40,40 @@ Mobile regressions run Chromium and WebKit with the iPhone 13 Pro profile at 390
 
 Real SwiftLaTeX pdfTeX WASM, not HTML printing or math-only rendering. A lazy-loaded, dedicated classic Worker makes two compilation passes. One job at a time; Cancel terminates immediately; a 60-second timeout terminates stalled jobs. The Worker is terminated after success/failure, releasing its heap. PDF blob URLs are revoked on replacement/switching. Preview uses the browser's native PDF viewer; browsers without one can export the generated PDF.
 
-The included subset covers the tested `article` (10/11 pt), `report` and `book` (10 pt) classes; `fontenc` with T1 and Latin Modern; `latexsym`, `fullpage`, `titlesec`, `marvosym`, `color`, `verbatim`, `enumitem`, `hyperref`, `fancyhdr`, English `babel`, `tabularx`, `amsmath`, `amssymb`, `geometry`, and `glyphtounicode`; plus the Computer Modern fonts exercised by the fixtures. This is **not a full TeX Live installation**. Arbitrary packages, fonts, Unicode scripts, shell escape, source assets, and uploaded bibliographies are unsupported. Missing packages return compiler logs. `scripts/bundle-tex.mjs` is an explicit maintainer asset-acquisition tool; the deployed application never downloads additional packages or contacts that mirror.
+The included subset covers the tested `article` (10/11 pt), `report` and `book` (10 pt) classes; `fontenc` with T1 and Latin Modern; `latexsym`, `fullpage`, `titlesec`, `marvosym`, `color`, `verbatim`, `enumitem`, `hyperref`, `fancyhdr`, English `babel`, `tabularx`, `amsmath`, `amssymb`, `geometry`, and `glyphtounicode`; plus the Computer Modern fonts exercised by the fixtures. This is **not a full TeX Live installation**. Arbitrary packages, font uploads, full Unicode script support, shell escape, source assets, and uploaded bibliographies are unsupported. Missing packages return compiler logs. `scripts/bundle-tex.mjs` and `scripts/bundle-native-tex.mjs` are explicit maintainer asset-acquisition tools; the deployed application never downloads additional packages or contacts that mirror.
 
-The source pane uses a reusable Monaco Editor with an original LaTeX tokenizer, a high-contrast blue-charcoal theme, full clipboard/undo, two-space indentation and Shift+Tab to leave the editor. Text is 14px on desktop and at least 16px on mobile, scaling with the root text size. Ctrl/Cmd+S and Ctrl/Cmd+Enter always request compilation only, even when source is unchanged. Monaco begins loading as soon as the source pane mounts, with an immediately editable plain-text fallback while it loads (also retained with a visible error/retry if loading fails). Only the editor API and selected editing contributions are bundled; unused language services and minimap are disabled. One editor/model is kept for the active document and disposed on switches. Its text worker is self-hosted and never compiles TeX; pdfTeX remains the only compiler.
+### Google Fonts in the PDF
+
+Use literal `fontspec` declarations to select **any Google Fonts family that supplies a compatible static TrueType face**, not just a curated list:
+
+```tex
+\documentclass{article}
+\usepackage{fontspec}
+\setmainfont[BoldFont={Roboto Bold}]{Roboto}
+\newfontfamily\crimson{Crimson Pro}
+\newfontfamily\lato{Lato}
+\begin{document}
+Roboto regular. \textbf{Roboto Bold.}
+{\crimson Crimson Pro.}
+{\lato Another Google Fonts family.}
+\end{document}
+```
+
+Supported explicit commands are `\setmainfont`, `\setsansfont`, `\setmonofont`, `\newfontfamily\name` (or `{\name}`), and `\fontspec`. Place optional settings **before** the braced family. Only `UprightFont`, `BoldFont`, `ItalicFont`, and `BoldItalicFont` options with literal names are accepted. Exact Google family names take precedence; when no exact family exists, style suffixes `Thin`, `ExtraLight`, `Light`, `Regular`, `Medium`, `SemiBold`, `Bold`, `ExtraBold`, `Black`, and `Italic` resolve to the underlying family/style. Thus `Archivo Black` remains the actual family, while `Roboto Bold` resolves to Roboto at weight 700.
+
+The already bundled `Latin Modern Roman` regular/bold/italic/bold-italic faces use local OpenType assets without any Google request.
+
+The scanner ignores `%` comments, `\verb` and verbatim/listing regions, but is **not a full TeX interpreter**. Computed names, paths/URLs, font declarations hidden inside macro expansion, post-family options, arbitrary fontspec features and variable-axis controls are unsupported. Bold/italic commands and standard section/title commands conservatively request matching styles for declared families; if a family lacks that requested style, compilation fails explicitly. Specify literal style options when needed. Missing glyphs/font substitutions also reject the new PDF and preserve the last good preview. Native text shaping is supported by the pinned XeTeX build, but some shaped glyphs/ligatures lack PDF text-extraction mappings; universal Unicode/accessibility/searchability is not claimed.
+
+Only documents with these declarations select the optional, self-hosted **SwiftLaTeX XeTeX** engine. It writes XDV; the self-hosted **DVIPDF** converter embeds actual font programs into PDF. These engines execute sequentially in dedicated cancellable browser workers, never on the server. Source is unchanged in the editor, drafts, D1 and `.tex` export; only a transient compilation copy replaces font declarations with generated local filenames.
+
+`GET /api/fonts` accepts only a validated family/style and proxies metadata from a fixed Google CSS endpoint using a TrueType-compatible user agent. This is necessary because Chrome's direct CSS request receives WOFF2, not TeX-compatible TTF. It never receives source or font bytes and never compiles. The frontend downloads only validated `https://fonts.gstatic.com/s/.../v.../*.ttf` URLs, without credentials/referrers or redirects. Only family/style names leave the browser for resolution. Default documents make no font-service/Google requests.
+
+Limits: 10 seconds per request, 60 seconds for the entire compilation including downloads, 16 faces, 8 MiB per face and 24 MiB total. Deduplicated memory/device caches are bounded to 24 MiB and the persistent cache to 16 entries. Persistent writes use Web Locks to preserve the bounds across tabs; browsers without that API use memory caching and report this limitation. Device caching is optional and reports failures through browser warnings; downloaded fonts may need a connection again if evicted. A cancelled/superseded job aborts downloads and releases its worker tree. Unavailable families/styles, unsafe URLs, unsupported formats and missing glyphs produce actionable errors, never a success-shaped substitute.
+
+The cold optional path adds a 22.79 MB format, 3.07 MB XeTeX WASM and 0.70 MB converter WASM, plus glue, required local packages and selected fonts. It is not eagerly loaded for other documents. The largest format remains below Cloudflare's 25 MiB static-file limit. Active memory can exceed 100 MB; sequential engines and worker termination reduce peak/idle memory, but this is not a low-memory guarantee. `tests/fixtures/google-fonts.tex` covers Roboto regular/bold, Crimson Pro and unrelated Lato, with assertions on actual PDF embedded font streams. Test font snapshots have per-file hashes and upstream licenses; `scripts/bundle-font-test-fixtures.mjs` explicitly refreshes them. Set `LIVE_GOOGLE_FONTS=1` to exercise the real service instead of deterministic test responses.
+
+The source pane uses a reusable Monaco Editor with an original LaTeX tokenizer, a high-contrast blue-charcoal theme, full clipboard/undo, two-space indentation and Shift+Tab to leave the editor. Text is 14px on desktop and at least 16px on mobile, scaling with the root text size. Ctrl/Cmd+S and Ctrl/Cmd+Enter always request compilation only, even when source is unchanged. Monaco begins loading as soon as the source pane mounts, with an immediately editable plain-text fallback while it loads (also retained with a visible error/retry if loading fails). Only the editor API and selected editing contributions are bundled; unused language services and minimap are disabled. One editor/model is kept for the active document and disposed on switches. Its text worker is self-hosted and never compiles TeX; the dedicated pdfTeX/XeTeX workers perform compilation.
 
 Monaco adds a significant separately loaded editor chunk; production build output reports its exact compressed size. A cold two-pass compile of the bundled T1/Latin Modern résumé-package fixture fetches roughly 27 MB of uncompressed runtime, format and package assets; the 10.36 MB format is the largest individual file, below Cloudflare's 25 MiB per-file limit. Browser HTTP caching avoids repeat network transfer where supported, but a new bounded Worker is created per compile, trading some startup work for lower idle RAM. Active compiler memory can exceed 100 MB. Manual compilation avoids CPU churn. 120 fps/8.33 ms is a design target, not a guarantee on low-end devices. No artificial claim of zero CPU/RAM or universal package support.
 

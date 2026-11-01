@@ -41,6 +41,10 @@ Local source remains local.
 async function loadCompiler(page) {
   const body = await readFile(new URL('../../src/compiler.js', import.meta.url), 'utf8');
   await page.route('**/compiler-client.js', route => route.fulfill({ contentType: 'text/javascript', body }));
+  for (const file of ['google-fonts.js', 'font-policy.js']) {
+    const body = await readFile(new URL(`../../src/${file}`, import.meta.url), 'utf8');
+    await page.route(`**/${file}`, route => route.fulfill({ contentType: 'text/javascript', body }));
+  }
   await page.goto('/');
   await page.evaluate(async () => {
     const { LatexCompiler } = await import('/compiler-client.js');
