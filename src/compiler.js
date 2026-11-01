@@ -1,9 +1,12 @@
+import { detectFonts, GoogleFontLoader } from './google-fonts.js';
+
 export class LatexCompiler {
-  constructor({ workerFactory = () => new Worker('/compiler/worker.js'), timeout = 60000 } = {}) {
+  constructor({ workerFactory = engine => new Worker(engine === 'xetex' ? '/compiler/native-worker.js' : '/compiler/worker.js'), timeout = 60000, fontLoader = new GoogleFontLoader() } = {}) {
     this.workerFactory = workerFactory;
     this.timeout = timeout;
     this.active = null;
     this.warming = null;
+    this.fontLoader = fontLoader;
   }
 
   warmup() {
@@ -50,13 +53,67 @@ export class LatexCompiler {
 
   compile(source, onStatus = () => {}) {
     this.active?.cancel();
+    let declarations;
+    try { declarations = detectFonts(source); } catch (error) { return Promise.reject(error); }
+    if (declarations.length) return this.compileNative(source, declarations, onStatus);
+    return this.compilePrepared(source, onStatus);
+  }
+
+  compileNative(source, declarations, onStatus) {
+    this.warming?.dispose(new Error('Compilation cancelled.'));
+    const controller = new AbortController();
+    const requestedAt = performance.now();
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let readiness;
+      let ready;
+      let notReady;
+      const finish = error => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        controller.abort();
+        if (this.active === pending) this.active = null;
+        notReady?.(error);
+        reject(error);
+      };
+      const pending = {
+        cancel: () => finish(new Error('Compilation cancelled.')),
+        warmup: () => readiness ||= new Promise((done, fail) => { ready = done; notReady = fail; }),
+      };
+      const timer = setTimeout(() => finish(new Error(`Compilation timed out after ${this.timeout / 1000} seconds. Simplify the document and try again.`)), this.timeout);
+      this.active = pending;
+      this.fontLoader.prepare(source, declarations, controller.signal, onStatus).then(prepared => {
+        if (settled) return;
+        clearTimeout(timer);
+        this.active = null;
+        settled = true;
+        const remaining = this.timeout - (performance.now() - requestedAt);
+        if (remaining <= 0) {
+          controller.abort();
+          const error = new Error('Compilation timed out while downloading fonts.');
+          notReady?.(error);
+          reject(error);
+          return;
+        }
+        const compilation = this.compilePrepared(prepared.source, onStatus, { engine: 'xetex', files: prepared.files, timeout: remaining });
+        if (readiness) this.active?.warmup().then(ready, notReady);
+        compilation.then(result => {
+          result.timings.totalMs = performance.now() - requestedAt;
+          resolve(result);
+        }, error => { notReady?.(error); reject(error); });
+      }, finish);
+    });
+  }
+
+  compilePrepared(source, onStatus, { engine = 'pdftex', files = [], timeout = this.timeout } = {}) {
     const requestedAt = performance.now();
     const warming = this.warming;
     this.warming = null;
     if (warming) clearTimeout(warming.timer);
     return new Promise((resolve, reject) => {
       let worker;
-      try { worker = warming?.worker || this.workerFactory(); } catch (error) { reject(error); return; }
+      try { worker = warming?.worker || this.workerFactory(engine); } catch (error) { reject(error); return; }
       let settled = false;
       let started = false;
       let compilationStartedAt;
@@ -85,7 +142,7 @@ export class LatexCompiler {
         }
         if (error) reject(error); else resolve(result);
       };
-      const timer = setTimeout(() => finish(new Error(`Compilation timed out after ${this.timeout / 1000} seconds. Simplify the document and try again.`)), this.timeout);
+      const timer = setTimeout(() => finish(new Error(`Compilation timed out after ${this.timeout / 1000} seconds. Simplify the document and try again.`)), timeout);
       this.active = {
         cancel: () => finish(new Error('Compilation cancelled.')),
         warmup: () => initializationMs !== undefined
@@ -107,13 +164,17 @@ export class LatexCompiler {
             onStatus('Typesetting locally...');
             if (settled) return;
             compilationStartedAt = performance.now();
+            for (const file of files) worker.postMessage({ cmd: 'writefile', url: file.filename, src: file.bytes });
             worker.postMessage({ cmd: 'writefile', url: 'main.tex', src: source });
             worker.postMessage({ cmd: 'setmainfile', url: 'main.tex' });
             worker.postMessage({ cmd: 'compilelatex' });
           } else if (data.cmd === 'compile') {
-            if (data.result !== 'ok' || !data.pdf) {
+            if (data.result !== 'ok' || !data.pdf ||
+                (engine === 'xetex' && /Missing character:|Font shape .* undefined|Some font shapes were not available|font .* not loadable/.test(data.log || ''))) {
               const log = String(data.log || 'Unknown compiler error.').slice(-24000);
-              finish(Object.assign(new Error('LaTeX could not compile. Check the log below. Only the bundled packages are available.'), { log }));
+              finish(Object.assign(new Error(engine === 'xetex'
+                ? 'LaTeX could not compile with the requested fonts. Check the log for missing glyphs/styles or unsupported packages. No substitute PDF was used.'
+                : 'LaTeX could not compile. Check the log below. Only the bundled packages are available.'), { log }));
             } else if (++passes < 2) {
               onStatus('Resolving references...');
               if (!settled) worker.postMessage({ cmd: 'compilelatex' });

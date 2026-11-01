@@ -1,0 +1,56 @@
+[
+  {
+    "status": 200,
+    "family": "Roboto",
+    "weight": 400,
+    "italic": false,
+    "url": "https://fonts.gstatic.com/s/roboto/v51/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWubEbVmUiA8.ttf",
+    "filename": "Roboto-400.ttf",
+    "sha256": "e9ff3730797df6aaf76d37c48234a6c4875032eaad8f1aaccd7daefa6dca9e7a"
+  },
+  {
+    "status": 200,
+    "family": "Roboto",
+    "weight": 700,
+    "italic": false,
+    "url": "https://fonts.gstatic.com/s/roboto/v51/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuYjalmUiA8.ttf",
+    "filename": "Roboto-700.ttf",
+    "sha256": "bbf3e2a2cb10a5a59284f96f97f4083c176798fe709633db019da376b10936e9"
+  },
+  {
+    "status": 200,
+    "family": "Crimson Pro",
+    "weight": 400,
+    "italic": false,
+    "url": "https://fonts.gstatic.com/s/crimsonpro/v28/q5uUsoa5M_tv7IihmnkabC5XiXCAlXGks1WZzm1MP5s7.ttf",
+    "filename": "Crimson-Pro-400.ttf",
+    "sha256": "b79d8f2663290023aae772403c4b9cd7bd463c68d04054a218e0de0729485f94"
+  },
+  {
+    "status": 200,
+    "family": "Crimson Pro",
+    "weight": 700,
+    "italic": false,
+    "url": "https://fonts.gstatic.com/s/crimsonpro/v28/q5uUsoa5M_tv7IihmnkabC5XiXCAlXGks1WZKWpMP5s7.ttf",
+    "filename": "Crimson-Pro-700.ttf",
+    "sha256": "576f7aa8e80e928f7c5f86f296c3c43f5268adb3f8fa44b3acb3157285a68c66"
+  },
+  {
+    "status": 200,
+    "family": "Lato",
+    "weight": 400,
+    "italic": false,
+    "url": "https://fonts.gstatic.com/s/lato/v25/S6uyw4BMUTPHjx4wWw.ttf",
+    "filename": "Lato-400.ttf",
+    "sha256": "b6e055ad6056d64c89133fd73e9ee935c068d8bd3ac09366d5d99f9eee99e3f4"
+  },
+  {
+    "status": 200,
+    "family": "Lato",
+    "weight": 700,
+    "italic": false,
+    "url": "https://fonts.gstatic.com/s/lato/v25/S6u9w4BMUTPHh6UVSwiPHA.ttf",
+    "filename": "Lato-700.ttf",
+    "sha256": "7e15d8482756e9d79c5b14dde8cd92256fd2afe0307703d825d4e8178d416c41"
+  }
+]
