@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { sourceEditor, editorReady, fillSource, expectSource } from './source-editor.js';
+import { sourceEditor, editorReady, fillSource, expectSource, readSource } from './source-editor.js';
+import { mergeText } from '../../src/crdt.js';
 
 const titleEditor = page => page.getByRole('textbox', { name: 'Document title', exact: true });
 const localDocuments = page => page.getByRole('navigation', { name: 'Documents' }).getByRole('button');
@@ -150,33 +151,32 @@ test('cloud autosave is debounced while Ctrl/Cmd+S only recompiles even unchange
   await fakeEngine(page);
   let saves = 0;
   let fail = false;
+  let savedDocument;
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', async route => {
-    if (route.request().method() === 'GET') return route.fulfill({ json: { documents: [] } });
-    saves++;
-    await new Promise(resolve => setTimeout(resolve, 60));
-    await route.fulfill({ json: { document: { id: 'saved-cloud', code: route.request().postDataJSON().code, revision: saves } } });
+    return route.fulfill({ json: { documents: savedDocument ? [savedDocument] : [] } });
   });
-  await page.route('**/api/documents/saved-cloud', async route => {
+  await page.route('**/api/documents/sync', async route => {
     if (fail) return route.fulfill({ status: 503, json: { error: 'Cloud save unavailable' } });
     saves++;
     await new Promise(resolve => setTimeout(resolve, 60));
-    await route.fulfill({ json: { revision: saves } });
+    savedDocument = { ...route.request().postDataJSON(), id: 'saved-cloud', revision: saves, updated_at: Date.now() };
+    await route.fulfill({ json: { document: savedDocument } });
   });
   await page.goto('/#workspace');
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
   await expect(page.getByRole('checkbox', { name: 'Live preview' })).not.toBeChecked();
   await editorReady(page);
-  expect(saves).toBe(0);
-  await page.getByRole('button', { name: 'Save to account' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved to your account' })).toContainText(/\d+ ms round trip/);
+  await page.waitForTimeout(1000);
+  const initialSaves = saves;
   await fillSource(page, 'first debounced edit');
   await fillSource(page, 'latest debounced edit');
   await sourceEditor(page).press('Control+s');
   await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(2);
-  expect(saves).toBe(1);
+  expect(saves).toBe(initialSaves);
   await expect(page.getByRole('status').filter({ hasText: 'Saved to your account' })).toContainText(/\d+ ms round trip/);
-  expect(saves).toBe(2);
+  expect(saves).toBe(initialSaves + 1);
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
   await sourceEditor(page).press('Control+s');
   await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(3);
@@ -184,7 +184,7 @@ test('cloud autosave is debounced while Ctrl/Cmd+S only recompiles even unchange
   await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(4);
   await page.waitForTimeout(1000);
   await expect(page.getByRole('button', { name: 'Save to account' })).toBeEnabled();
-  expect(saves).toBe(2);
+  expect(saves).toBe(initialSaves + 1);
   expect(await page.evaluate(() => window.maxConcurrentEngines)).toBe(1);
   fail = true;
   await fillSource(page, 'failed automatic cloud save stays local');
@@ -192,24 +192,25 @@ test('cloud autosave is debounced while Ctrl/Cmd+S only recompiles even unchange
   await expect(page.getByRole('status').filter({ hasText: 'Cloud save failed' })).not.toContainText('round trip');
 });
 
-test('cloud autosave coalesces in-flight edits and carries the latest server revision', async ({ page }) => {
+test('cloud autosave coalesces in-flight edits and carries CRDT history', async ({ page }) => {
   await fakeEngine(page);
   const updates = [];
   let concurrent = 0, maximum = 0;
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
-  await page.route('**/api/documents', route => route.fulfill({ json: route.request().method() === 'GET'
-    ? { documents: [] } : { document: { id: 'coalesced-cloud', code: route.request().postDataJSON().code, revision: 1 } } }));
-  await page.route('**/api/documents/coalesced-cloud', async route => {
+  let revision = 0;
+  let savedDocument;
+  await page.route('**/api/documents', route => route.fulfill({ json: { documents: savedDocument ? [savedDocument] : [] } }));
+  await page.route('**/api/documents/sync', async route => {
     const body = route.request().postDataJSON();
-    updates.push(body);
+    if (!body.source.startsWith('\\documentclass')) updates.push(body);
     maximum = Math.max(maximum, ++concurrent);
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    await new Promise(resolve => setTimeout(resolve, body.source.startsWith('\\documentclass') ? 10 : 1200));
     concurrent--;
-    await route.fulfill({ json: { revision: body.revision + 1 } });
+    savedDocument = { ...body, id: 'coalesced-cloud', revision: ++revision, updated_at: Date.now() };
+    await route.fulfill({ json: { document: savedDocument } });
   });
   await page.goto('/#workspace');
   await editorReady(page);
-  await page.getByRole('button', { name: 'Save to account' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved to your account' })).toBeVisible();
   await fillSource(page, 'first request');
   await expect.poll(() => updates.length).toBe(1);
@@ -217,9 +218,8 @@ test('cloud autosave coalesces in-flight edits and carries the latest server rev
   await fillSource(page, 'latest edit during request');
   await expect.poll(() => updates.length).toBe(2);
   await expect(page.getByRole('status').filter({ hasText: 'Saved to your account' })).toBeVisible();
-  expect(updates.map(item => [item.source, item.revision])).toEqual([
-    ['first request', 1], ['latest edit during request', 2],
-  ]);
+  expect(updates.map(item => item.source)).toEqual(['first request', 'latest edit during request']);
+  expect(updates.every(item => typeof item.crdt_state === 'string')).toBe(true);
   expect(maximum).toBe(1);
   await page.reload();
   await expectSource(page, 'latest edit during request');
@@ -541,27 +541,37 @@ test('long account names retain an explicit mobile sign-out action without overf
   await page.getByRole('button', { name: 'Close help' }).press('Escape');
 });
 
-test('reopening a linked cloud draft replaces visible inputs and persists the fetched text', async ({ page }) => {
+test('reopening a linked document merges concurrent text without a replacement prompt', async ({ page }) => {
   let cloud = { id: 'cloud-document', code: 'Cloud123', title: 'Cloud title', source: 'original cloud text', revision: 1 };
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', route => route.fulfill({ json: { documents: [cloud] } }));
   await page.route('**/api/documents/cloud-document', route => route.fulfill({ json: { document: cloud } }));
+  await page.route('**/api/documents/sync', async route => {
+    const incoming = route.request().postDataJSON();
+    if (incoming.code !== cloud.code)
+      return route.fulfill({ json: { document: { ...incoming, id: 'other-document', revision: 1 } } });
+    cloud = { ...cloud, ...mergeText(incoming, cloud), revision: cloud.revision + 1 };
+    return route.fulfill({ json: { document: cloud } });
+  });
   await page.goto('/#workspace');
   await editorReady(page);
   await page.getByRole('navigation', { name: 'Documents' }).getByRole('button').filter({ hasText: 'Cloud title' }).click();
   await expectSource(page, 'original cloud text');
-  const openCloud = page.getByRole('button', { name: 'Open account version of Cloud title' });
+  const openCloud = page.getByRole('navigation', { name: 'Documents' }).locator('.document-item').filter({ hasText: 'Cloud title' });
   await fillSource(page, 'local edits not yet debounced');
   cloud = { ...cloud, title: 'Updated cloud title', source: 'new cloud text', revision: 2 };
   let prompted = false;
   page.once('dialog', async dialog => { prompted = true; await dialog.accept(); });
   await openCloud.click();
-  await expectSource(page, 'new cloud text');
+  await expect.poll(() => readSource(page)).toContain('new cloud text');
+  await expect.poll(() => readSource(page)).toContain('local edits not yet debounced');
   await expect(titleEditor(page)).toHaveValue('Updated cloud title');
-  expect(prompted).toBe(true);
+  expect(prompted).toBe(false);
   await expect(page.getByRole('status').filter({ hasText: 'Saved to your account' })).toBeVisible();
   await page.reload();
-  await expectSource(page, 'new cloud text');
+  const converged = await readSource(page);
+  await page.reload();
+  await expectSource(page, converged);
   await expect(titleEditor(page)).toHaveValue('Updated cloud title');
 });
 

@@ -11,6 +11,7 @@ import useWorkspaceResize from './components/workspace-resize.js';
 import { mergeDocuments } from './document-list.js';
 import { documentPath, documentRoute, newDocumentCode, validDocumentCode } from './document-url.js';
 import { API_METHODS, createAgentApi } from './agent-api.js';
+import { createText, editText, encodeState, mergeText } from './crdt.js';
 import './style.css';
 
 const starter = String.raw`\documentclass[11pt]{article}
@@ -117,6 +118,10 @@ function App() {
   const cloudSaving = useRef(false);
   const account = useRef(null);
   const cloudRequest = useRef(0);
+  const cloudMetadata = useRef(new Map());
+  const textReplica = useRef(null);
+  const localLoaded = useRef(Promise.resolve());
+  const draftChannel = useRef(null);
   account.current = user;
   const editorApi = useRef(null);
   const titleInput = useRef(null);
@@ -146,6 +151,33 @@ function App() {
     lastError.current = message;
     setError(message);
     emit('error', { message });
+  }
+  function materialize(document) {
+    const live = textReplica.current;
+    if (live?.id === document.id && live.doc.getMap('identity').get('code') === document.code
+      && live.doc.getText('source').toString() === document.source)
+      return { ...document, crdt_state: encodeState(live.doc) };
+    const doc = createText(document);
+    try {
+      editText(doc, document.source);
+      return { ...document, crdt_state: encodeState(doc) };
+    } finally { doc.destroy(); }
+  }
+  function activate(document) {
+    const doc = createText(document);
+    const changed = active.current?.id === document.id && active.current.source !== document.source;
+    textReplica.current?.doc.destroy();
+    textReplica.current = { id: document.id, doc };
+    active.current = document;
+    setCurrent(document);
+    if (changed) {
+      setStale(shownPdf.current?.source !== document.source);
+      emit('change', { documentId: document.id, title: document.title, length: document.source.length, fields: ['source'] });
+      scheduleLive();
+    }
+  }
+  function adoptCode(document, code) {
+    return document.code === code ? document : materialize({ ...document, code, crdt_state: null });
   }
   function showWorkspace(document = active.current, navigation = 'push') {
     if (!document) return;
@@ -211,18 +243,43 @@ function App() {
     if (persisted.current.has(document)) return;
     if (document === active.current) pending.current = true;
     const started = performance.now();
-    const work = saving.current.catch(() => {}).then(() => drafts.put(document));
-    saving.current = work;
     try {
-      await work;
+      const snapshot = materialize(document);
+      const work = saving.current.catch(() => {}).then(() => drafts.put(snapshot));
+      saving.current = work;
+      let saved = await work;
       localSaveMs.current = performance.now() - started;
-      persisted.current.add(document);
       emit('save', { documentId: document.id, local: true, cloud: false });
-      if (active.current === document) {
-        pending.current = false;
-        setSaveState(savedLabel(document));
+      let raced = false;
+      if (active.current?.id === document.id) {
+        const latest = active.current;
+        const merged = mergeText(saved, materialize(latest));
+        raced = merged.crdt_state !== saved.crdt_state || latest.title !== saved.title
+          || latest.owner !== saved.owner || latest.cloudId !== saved.cloudId || latest.revision !== saved.revision;
+        saved = { ...saved, ...latest, ...merged, dirty: raced || saved.dirty || latest.dirty };
       }
-      setDocuments(list => [document, ...list.filter(item => item.id !== document.id)]);
+      if (active.current?.id === document.id) {
+        activate(saved);
+        if (!raced) persisted.current.add(saved);
+        else {
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => persist().catch(() => {}), 300);
+          scheduleCloud(saved);
+        }
+        if (saved.source !== document.source) {
+          setStale(shownPdf.current?.source !== saved.source);
+          scheduleCloud(saved);
+        }
+      }
+      persisted.current.add(document);
+      if (active.current?.id === document.id) {
+        pending.current = raced;
+        setSaveState(raced ? 'Saving on this device...' : savedLabel(saved));
+      }
+      cloudSnapshots.current.set(saved.id, saved);
+      setDocuments(list => [saved, ...list.filter(item => item.id !== saved.id && item.code !== saved.code)]);
+      draftChannel.current?.postMessage({ id: saved.id });
+      return saved;
     } catch (reason) { notice(reason); setSaveState('Local save failed - export your source'); throw reason; }
   }
   async function flush() {
@@ -230,9 +287,17 @@ function App() {
     do {
       snapshot = active.current;
       await persist(snapshot);
-    } while (active.current !== snapshot);
+    } while (active.current && !persisted.current.has(active.current));
   }
-  function update(patch) {
+  function update(patch, changes, before) {
+    if ('source' in patch) {
+      try {
+        if (textReplica.current?.id !== active.current.id) activate(materialize(active.current));
+        if (changes && before !== undefined && active.current.source !== before)
+          editText(textReplica.current.doc, before);
+        editText(textReplica.current.doc, patch.source, changes);
+      } catch (reason) { notice(reason); return; }
+    }
     const next = { ...active.current, ...patch, dirty: true, updated_at: Date.now() };
     active.current = next;
     setCurrent(next);
@@ -251,6 +316,7 @@ function App() {
   async function select(document, force = false, navigation = 'push') {
     const selection = ++selectionRequest.current;
     if (!force && document.id === active.current?.id) {
+      scheduleCloud(active.current);
       showWorkspace(active.current, navigation);
       setSidebar(false);
       if (!shownPdf.current && !compiler.current.active) compile({ reveal: false });
@@ -266,9 +332,9 @@ function App() {
       compiler.current.cancel();
       setCompiling(false);
       generation.current++;
-      active.current = document;
-      setCurrent(document);
-      if (document.dirty) scheduleCloud(document);
+      document = materialize(document);
+      activate(document);
+      scheduleCloud(document);
       setDocuments(list => [document, ...list.filter(item => item.id !== document.id)]);
       compiledSource.current = null;
       requestedSource.current = null;
@@ -298,12 +364,31 @@ function App() {
     try { await select(document); }
     catch (reason) { notice(reason); }
   }
-  async function refreshCloud(owner = account.current) {
+  async function refreshCloud(owner = account.current, reconcile = true) {
     if (!owner) { cloudRequest.current++; setCloud([]); return; }
     const request = ++cloudRequest.current;
     const data = await api('/documents');
-    if (request === cloudRequest.current
-      && (!account.current || account.current.id === owner.id)) setCloud(data.documents);
+    if (request !== cloudRequest.current || account.current?.id !== owner.id) return;
+    cloudMetadata.current = new Map(data.documents.map(document => [document.id, document]));
+    setCloud(data.documents);
+    if (reconcile) {
+      await localLoaded.current;
+      const list = await drafts.all();
+      if (account.current?.id !== owner.id) return;
+      for (let document of list) {
+        if (document.owner && document.owner !== owner.id) continue;
+        const linked = document.owner === owner.id && data.documents.find(item => item.id === document.cloudId);
+        if (linked?.code && linked.code !== document.code) {
+          document = adoptCode(active.current?.id === document.id ? active.current : document, linked.code);
+          if (active.current?.id === document.id) {
+            activate(document);
+            if (visibleView.current === 'workspace') showWorkspace(document, 'replace');
+          }
+          await persist(document);
+        }
+        sync({ snapshot: active.current?.id === document.id ? active.current : document, automatic: true });
+      }
+    }
   }
   useEffect(() => {
     let disposed = false;
@@ -311,13 +396,12 @@ function App() {
       liveEnabled.current = localStorage.getItem('folio-live-preview') === 'true';
       setLive(liveEnabled.current);
     } catch { notice(new Error('Could not read the live preview preference. This session starts with live preview off.')); }
-    drafts.all().then(async list => {
+    localLoaded.current = drafts.all().then(async list => {
       const document = list.sort((a, b) => b.updated_at - a.updated_at)[0] || makeDraft();
       if (!list.length) await drafts.put(document);
       if (disposed) return;
       for (const draft of list.length ? list : [document]) persisted.current.add(draft);
-      active.current = document;
-      setCurrent(document);
+      activate(materialize(document));
       if (document.dirty) scheduleCloud(document);
       setDocuments(list.length ? list : [document]);
       setLocalReady(true);
@@ -342,7 +426,37 @@ function App() {
       if (pending.current) { event.preventDefault(); event.returnValue = ''; }
     };
     const hidden = () => { if (document.visibilityState === 'hidden' && pending.current) persist().catch(() => {}); };
+    const online = () => {
+      api('/me').then(data => {
+        account.current = data.user;
+        setUser(data.user);
+        return refreshCloud(data.user);
+      }).catch(reason => {
+        if (reason.status !== 401) notice(reason);
+      });
+    };
+    const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('folio-drafts') : null;
+    draftChannel.current = channel;
+    if (channel) channel.onmessage = async () => {
+      try {
+        const list = await drafts.all();
+        const incoming = list.find(item => item.id === active.current?.id);
+        if (incoming) {
+          const local = materialize(active.current);
+          if (incoming.crdt_state !== local.crdt_state) {
+            const next = { ...active.current, ...mergeText(local, incoming), dirty: true };
+            activate(next);
+            pending.current = true;
+            clearTimeout(timer.current);
+            timer.current = setTimeout(() => persist().catch(() => {}), 300);
+            scheduleCloud(next);
+          }
+        }
+        setDocuments(list);
+      } catch (reason) { notice(reason); }
+    };
     window.addEventListener('beforeunload', unload);
+    window.addEventListener('online', online);
     document.addEventListener('visibilitychange', hidden);
     return () => {
       disposed = true;
@@ -357,7 +471,11 @@ function App() {
       for (const url of retiredUrls.current) if (url) URL.revokeObjectURL(url);
       window.removeEventListener('beforeunload', unload);
       window.removeEventListener('popstate', popstate);
+      window.removeEventListener('online', online);
       document.removeEventListener('visibilitychange', hidden);
+      channel?.close();
+      draftChannel.current = null;
+      textReplica.current?.doc.destroy();
     };
   }, []);
   useEffect(() => {
@@ -387,9 +505,8 @@ function App() {
       const { document } = await api(`/documents/by-code/${route.code}`);
       if (!stillCurrent() || account.current?.id !== owner) return;
       const cached = localDocuments.current.find(item => item.cloudId === document.id && item.owner === owner);
-      const next = cached?.dirty ? { ...cached, code: document.code } : {
-        ...document, id: cached?.id || crypto.randomUUID(), cloudId: document.id, owner, dirty: false,
-      };
+      const next = { ...document, ...(cached ? mergeText(adoptCode(materialize(cached), document.code), document) : {}),
+        id: cached?.id || crypto.randomUUID(), cloudId: document.id, owner, dirty: Boolean(cached?.dirty) };
       await select(next, true, 'replace');
     }
     resolve().catch(reason => {
@@ -397,22 +514,6 @@ function App() {
     });
     return () => { disposed = true; };
   }, [localReady, authReady, routeVersion, user?.id]);
-  useEffect(() => {
-    if (!user) return;
-    for (const document of documents) {
-      const remote = document.owner === user.id && cloud.find(item => item.id === document.cloudId);
-      if (!remote?.code || remote.code === document.code) continue;
-      const snapshot = active.current?.id === document.id ? active.current : document;
-      const next = { ...snapshot, code: remote.code };
-      if (active.current?.id === document.id) {
-        active.current = next;
-        setCurrent(next);
-        if (view === 'workspace') showWorkspace(next, 'replace');
-      }
-      cloudSnapshots.current.set(next.id, next);
-      persist(next).catch(() => {});
-    }
-  }, [cloud, documents, user?.id]);
   useEffect(() => {
     if (view !== 'workspace') return;
     let disposed = false;
@@ -533,20 +634,24 @@ function App() {
   function scheduleCloud(document) {
     cloudSnapshots.current.set(document.id, document);
     clearTimeout(cloudTimers.current.get(document.id));
-    if (!account.current || document.owner !== account.current.id || !document.cloudId) return;
+    if (!navigator.onLine || !account.current || (document.owner && document.owner !== account.current.id)) return;
     cloudTimers.current.set(document.id, setTimeout(() => {
       cloudTimers.current.delete(document.id);
       sync({ snapshot: cloudSnapshots.current.get(document.id), automatic: true });
     }, 800));
   }
-  useEffect(() => {
-    if (user && active.current?.dirty) scheduleCloud(active.current);
-  }, [user]);
   async function sync({ snapshot = active.current, automatic = false } = {}) {
     if (!snapshot) return { ok: false, error: 'No document is open.' };
     const owner = account.current;
     if (!owner) { if (!automatic) setAuth('login'); return { ok: false, error: 'Sign in to save to your account.' }; }
-    if (automatic && (snapshot.owner !== owner.id || !snapshot.cloudId)) return { ok: false, skipped: true };
+    if (snapshot.owner && snapshot.owner !== owner.id) {
+      if (!automatic) notice(new Error('Sign in to the document owner account to synchronize this document.'));
+      return { ok: false, error: 'Sign in to the document owner account to synchronize this document.' };
+    }
+    if (!navigator.onLine) {
+      if (!automatic) setSaveState('Offline - your device draft will sync when online');
+      return { ok: false, offline: true, error: 'Offline - your device draft will sync when online.' };
+    }
     clearTimeout(cloudTimers.current.get(snapshot.id));
     cloudTimers.current.delete(snapshot.id);
     if (cloudSaving.current) {
@@ -562,32 +667,40 @@ function App() {
     setError('');
     let localSaved = false;
     try {
-      await persist(snapshot);
+      if (snapshot.cloudId && snapshot.owner === owner.id) {
+        let remote = cloudMetadata.current.get(snapshot.cloudId);
+        if (!remote) remote = (await api(`/documents/${snapshot.cloudId}`)).document;
+        if (remote.code !== snapshot.code) {
+          snapshot = adoptCode(active.current?.id === snapshot.id ? active.current : snapshot, remote.code);
+          if (active.current?.id === snapshot.id) {
+            activate(snapshot);
+            if (visibleView.current === 'workspace') showWorkspace(snapshot, 'replace');
+          }
+        }
+      }
+      snapshot = await persist(snapshot) || materialize(snapshot);
       localSaved = true;
       if (active.current?.id === snapshot.id) setSaveState('Saving to your account...');
-      let saved;
       const started = performance.now();
-      if (snapshot.cloudId && snapshot.owner === owner.id) {
-        const data = await api(`/documents/${snapshot.cloudId}`, {
-          title: snapshot.title, source: snapshot.source, revision: snapshot.revision,
-        }, 'PUT');
-        saved = { ...snapshot, revision: data.revision };
-      } else {
-        const { document } = await api('/documents', { title: snapshot.title, source: snapshot.source, code: snapshot.code });
-        if (!validDocumentCode(document.code)) throw new Error('The account response is missing a valid document permalink. Your device draft is kept.');
-        saved = { ...snapshot, code: document.code, cloudId: document.id, revision: document.revision, owner: owner.id };
-      }
+      const { document: saved } = await api('/documents/sync', {
+        code: snapshot.code, title: snapshot.title || 'Untitled paper',
+        source: snapshot.source, crdt_state: snapshot.crdt_state,
+      });
+      if (!validDocumentCode(saved.code) || saved.code !== snapshot.code)
+        throw new Error('The account response has a different document identity. Your device draft is kept.');
       const roundTripMs = performance.now() - started;
       cloudTimings.current.set(snapshot.id, roundTripMs);
       const latest = active.current?.id === snapshot.id ? active.current : cloudSnapshots.current.get(snapshot.id);
-      const next = { ...latest, code: saved.code, cloudId: saved.cloudId, owner: owner.id, revision: saved.revision, dirty: latest !== snapshot };
+      const merged = mergeText(materialize(latest || snapshot), saved);
+      const next = { ...latest, ...merged, cloudId: saved.id, owner: owner.id, revision: saved.revision,
+        dirty: merged.crdt_state !== saved.crdt_state };
       cloudSnapshots.current.set(next.id, next);
       if (active.current?.id === next.id) {
-        active.current = next; setCurrent(next);
+        activate(next);
         if (visibleView.current === 'workspace') showWorkspace(next, 'replace');
       }
       await persist(next);
-      if (account.current?.id === owner.id) await refreshCloud();
+      if (account.current?.id === owner.id) await refreshCloud(owner, false);
       if (next.dirty && account.current?.id === owner.id) scheduleCloud(next);
       outcome = { ok: true, documentId: next.id, cloudId: next.cloudId, revision: next.revision, roundTripMs, dirty: next.dirty };
       emit('save', { ...outcome, local: true, cloud: true });
@@ -605,22 +718,23 @@ function App() {
         cloudQueue.current.delete(id);
         const latest = cloudSnapshots.current.get(id) || request.snapshot;
         const settle = result => { for (const waiter of request.waiters) waiter(result); };
-        if (latest.dirty) sync({ automatic: request.automatic, snapshot: latest }).then(settle);
-        else settle({ ok: true, documentId: latest.id, cloudId: latest.cloudId, revision: latest.revision, dirty: false });
+        sync({ automatic: request.automatic, snapshot: latest }).then(settle);
       }
     }
     return outcome;
   }
-  async function openCloud(item, { agentRequest = false, replaceDraft = false } = {}) {
+  async function openCloud(item) {
     const request = ++selectionRequest.current;
+    const owner = account.current?.id;
     try {
       const { document } = await api(`/documents/${item.id}`);
-      if (request !== selectionRequest.current) return;
-      const local = active.current?.cloudId === item.id && active.current.owner === user.id
-        ? active.current : documents.find(doc => doc.cloudId === item.id && doc.owner === user.id);
-      if (local?.dirty && !(agentRequest ? replaceDraft
-        : window.confirm('Replace this device draft with the cloud version? Export the local draft first if you need it.'))) return 'declined';
-      const next = { ...document, id: local?.id || crypto.randomUUID(), updated_at: document.updated_at ?? Date.now(), cloudId: document.id, owner: user.id, dirty: false };
+      if (request !== selectionRequest.current || account.current?.id !== owner) return;
+      const eligible = doc => (!doc.owner || doc.owner === account.current?.id)
+        && (doc.code === document.code || doc.cloudId === item.id);
+      const local = active.current && eligible(active.current) ? active.current : localDocuments.current.find(eligible);
+      const merged = local ? mergeText(adoptCode(materialize(local), document.code), document) : materialize(document);
+      const next = { ...document, ...merged, id: local?.id || crypto.randomUUID(), updated_at: document.updated_at ?? Date.now(),
+        cloudId: document.id, owner, dirty: Boolean(local?.dirty) };
       await select(next, true);
     } catch (reason) { notice(reason); }
   }
@@ -638,7 +752,7 @@ function App() {
       if (snapshot.cloudId) {
         if (snapshot.owner !== user?.id) throw new Error('Sign in to the document owner account before deleting this synced draft.');
         await api(`/documents/${snapshot.cloudId}`, undefined, 'DELETE');
-        await refreshCloud();
+        await refreshCloud(user, false);
       }
       await drafts.delete(snapshot.id);
       const list = documents.filter(doc => doc.id !== snapshot.id);
@@ -661,11 +775,10 @@ function App() {
   const actions = useRef({});
   actions.current = { compile, sync, modal: Boolean(auth || showHelp) };
   const unifiedDocuments = mergeDocuments(documents, cloud, user?.id);
-  function openDocument(document, options) {
-    if (!document.localAvailable) return openCloud(document.cloudItem, options);
-    if (document.cloudItem && !document.dirty
-      && Number(document.cloudItem.updated_at) > Number(document.localUpdatedAt)) {
-      return openCloud(document.cloudItem, options);
+  function openDocument(document) {
+    if (!document.localAvailable) return openCloud(document.cloudItem);
+    if (document.cloudItem && navigator.onLine) {
+      return openCloud(document.cloudItem);
     }
     const { key, localAvailable, cloudAvailable, cloudItem, localUpdatedAt, current: _current, ...draft } = document;
     return select(draft);
@@ -684,12 +797,11 @@ function App() {
     active: () => active.current,
     state: () => ({ view, tab, user, saveState, compileState, engineState, live, busy, error, log }),
     documents: () => unifiedDocuments.map(item => ({ ...item, current: item.localAvailable && item.id === active.current?.id })),
-    open: async (item, { account: fromAccount, replaceDraft }) => {
+    open: async (item, { account: fromAccount }) => {
       lastError.current = '';
       const { current: _current, ...document } = item;
-      const options = { agentRequest: true, replaceDraft };
-      const result = fromAccount ? await openCloud(document.cloudItem, options) : await openDocument(document, options);
-      if (result === 'declined') throw new Error('This device draft has changes not saved to your account. Save it first, or pass { replaceDraft: true }.');
+      if (fromAccount) await openCloud(document.cloudItem);
+      else await openDocument(document);
     },
     create: (source, title) => { lastError.current = ''; return newDocument(source, title); },
     rename: async title => {
@@ -771,7 +883,7 @@ function App() {
       {!user && routeError && <button className="account" onClick={() => setAuth('login')}>Sign in</button>}
       <button className="quiet" onClick={() => showProjects()}>Your projects</button>
     </main> : view === 'projects' ? <ProjectsView documents={unifiedDocuments} onOpen={openDocument}
-      onOpenCloud={openCloud} onNew={() => newDocument()}
+      onNew={() => newDocument()}
       onImport={() => fileInput.current.click()} username={user?.username}
       onSignIn={() => user ? select(active.current) : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className="workspace-view">
     <header className="topbar">
@@ -813,9 +925,6 @@ function App() {
                 title={hasEditedDate ? `Last edited ${edited.toLocaleString()}` : 'Last edited time unavailable'}>
                 {hasEditedDate ? edited.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Date unavailable'}
               </time>
-              {document.localAvailable && document.cloudAvailable && <button className="document-cloud-open"
-                aria-label={`Open account version of ${document.title}`} title="Open account version" disabled={busy}
-                onClick={() => openCloud(document.cloudItem)}><Icon name="cloud" /></button>}
             </div>
           </div>;
         })}</nav>
@@ -854,7 +963,7 @@ function App() {
             <div className="editor-container">
               <LatexEditor documentKey={`${current?.id || 'loading'}:${generation.current}`}
                 value={current?.source || ''} loading={!current} apiRef={editorApi}
-                onChange={source => update({ source })}
+                onChange={(source, changes, before) => update({ source }, changes, before)}
                 onSave={() => compile()} onCompile={() => compile()} />
             </div>
             <div className="editor-footer"><span>LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>

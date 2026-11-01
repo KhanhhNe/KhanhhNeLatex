@@ -5,20 +5,20 @@ function updatedAt(document) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function cloudKey(ownerId, cloudId) {
-  return `cloud:${ownerId}:${cloudId}`;
+function cloudKey(ownerId, cloudId, code) {
+  return `cloud:${ownerId}:${code || cloudId}`;
 }
 
 export function mergeDocuments(localDocuments, cloudDocuments, ownerId) {
   const cloudByKey = new Map((ownerId ? cloudDocuments : []).map(document => [
-    cloudKey(ownerId, document.id), document,
+    cloudKey(ownerId, document.id, document.code), document,
   ]));
   const localByKey = new Map();
 
   for (const document of localDocuments) {
-    const key = ownerId && document.owner === ownerId && document.cloudId
-      ? cloudKey(ownerId, document.cloudId)
-      : `local:${document.id}`;
+    const key = ownerId && (!document.owner || document.owner === ownerId) && (document.code || document.cloudId)
+      ? cloudKey(ownerId, document.cloudId, document.code)
+      : `local:${document.code || document.id}`;
     const existing = localByKey.get(key);
     if (!existing || (document.dirty && !existing.document.dirty)
       || (Boolean(document.dirty) === Boolean(existing.document.dirty)

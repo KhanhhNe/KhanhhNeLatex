@@ -18,6 +18,7 @@ export const documents = sqliteTable('documents', {
   user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   source: text('source').notNull(),
+  crdt_state: text('crdt_state'),
   revision: integer('revision').notNull().default(1),
   updated_at: integer('updated_at').notNull(),
 }, table => [

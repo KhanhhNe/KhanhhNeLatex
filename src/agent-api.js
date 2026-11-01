@@ -146,7 +146,7 @@ export const API_METHODS = [
   ['status()', 'View, current document, save/compile state, sign-in user, preview freshness.', 'latex.status()'],
   ['list()', 'All documents: id, cloudId, 8-character code, permalink url, title, local/cloud availability, updatedAt, dirty, current.', 'latex.list()'],
   ['current()', 'Current document metadata (no source).', 'latex.current()'],
-  ['open(ref, { account?, replaceDraft? })', 'Open/switch by id, cloudId, 8-character permalink code or /documents/... URL, list key or exact title. account: open the account copy; replaceDraft: allow replacing an unsynced device draft.', 'await latex.open("Alpha paper")'],
+  ['open(ref, { account? })', 'Open/switch by id, cloudId, 8-character permalink code or /documents/... URL, list key or exact title. account: synchronize with the same account document. Text merges through CRDT history; legacy replaceDraft options never discard device edits.', 'await latex.open("Alpha paper")'],
   ['create({ title?, source? })', 'Create a new device document and open it.', 'await latex.create({ title: "Notes" })'],
   ['rename(title)', 'Rename the current document.', 'await latex.rename("Final draft")'],
   ['remove(ref?, { confirm: true })', 'Delete a document from this device and, if linked, your account. confirm: true is required.', 'await latex.remove(undefined, { confirm: true })'],
