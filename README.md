@@ -30,6 +30,8 @@ Mobile regressions run Chromium and WebKit with the iPhone 13 Pro profile at 390
 
 ## Writing and persistence
 
+The document title field grows with its text up to the available toolbar width on desktop, laptop and mobile. Longer titles scroll within the input without displacing the toolbar actions.
+
 On desktop, drag the subtle separators to resize the document sidebar or source/PDF split. Focus a separator and use Left/Right arrows (Shift for larger steps), Home/End for its limits, or Enter/double-click to restore its default. Escape cancels an active drag. Bounded layout preferences stay on this device, separate from document saves; resizing never compiles or saves source. Narrow screens retain the document drawer and source/PDF tabs.
 
 - One text-only UTF-8 `.tex` file per document, maximum 100,000 characters; imports also limited to 400 KB. No image, font, binary or other source uploads.

@@ -49,7 +49,11 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
 .document-title{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
 .breadcrumb{color:#aaa;font-size:.8125rem;white-space:nowrap}
 .breadcrumb>span{padding-left:8px;color:#757575}
-.document-title input{width:210px;max-width:100%;min-height:44px;padding:8px 4px;border:0;border-radius:5px;background:none;color:#f2f2f2;font-size:.875rem;font-weight:500}
+.document-title-field{display:grid;grid-template-columns:minmax(0,1fr);width:max-content;max-width:100%;min-width:44px;flex:0 1 auto;font-size:.875rem;font-weight:500}
+.document-title-measure,.document-title input{grid-area:1/1;min-height:44px;padding:8px 4px;font:inherit}
+/* The hidden text sizes the field in browsers without field-sizing support. */
+.document-title-measure{visibility:hidden;white-space:pre;overflow:hidden;pointer-events:none}
+.document-title input{width:0;min-width:100%;border:0;border-radius:5px;background:none;color:#f2f2f2}
 .document-title input:hover{background:#ffffff05}
 .save-state{display:flex;align-items:center;gap:6px;color:#b5c3bb;font-size:.6875rem;min-width:0;max-width:240px;overflow-wrap:anywhere;line-height:1.45}
 .save-state i{display:inline-block;width:5px;height:5px;border-radius:50%;background:#83b79b;flex-shrink:0}
@@ -140,7 +144,6 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
   .sidebar.open{display:flex}
   .document-toolbar{min-height:80px;padding:6px 12px;gap:8px;flex-wrap:wrap}
   .document-title{flex:1;min-width:140px}
-  .document-title input{width:200px}
   .document-actions{margin-left:auto}
   .mobile-tabs{display:flex;flex-shrink:0;gap:4px;padding:0 12px;border-bottom:1px solid #3b454d;background:var(--source)}
   .mobile-tabs button{position:relative;flex:1;border-radius:0;padding:10px 8px;color:#aebac3;font-size:.8125rem}
@@ -159,9 +162,9 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
   .top-actions>.quiet .ui-icon{display:none}
   .account{padding:8px 12px;font-size:.8125rem}
   .account .ui-icon,.account .account-name{display:none}
-  .document-toolbar{flex-direction:column;align-items:stretch;padding:6px 12px;gap:4px;min-height:100px}
+  .document-toolbar{flex-direction:column;flex-wrap:nowrap;align-items:stretch;padding:6px 12px;gap:4px;min-height:100px}
   .document-title{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:0;flex-basis:auto}
-  .document-title input{width:100%;min-height:44px}
+  .document-title-field{align-self:flex-start}
   .save-state{font-size:.6875rem;line-height:1.5;min-height:18px;flex-basis:auto}
   .document-actions{gap:4px;flex-wrap:wrap;justify-content:flex-end;margin-left:0}
   .document-actions .quiet,.save-button{padding:8px 10px;font-size:.75rem}
@@ -185,7 +188,7 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
 @media(max-width:360px){.topbar .brand{display:none}.topbar{flex-wrap:wrap}.top-actions{flex-wrap:wrap;gap:4px;max-width:100%}}
 @media(max-width:1050px){
   .app{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-  .document-title input{font-size:1rem}
+  .document-title-field{font-size:1rem}
   .modal-backdrop{padding: max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
   .modal{max-height:calc(100dvh - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom)))}
 }
