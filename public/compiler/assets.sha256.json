@@ -562,8 +562,8 @@
     },
     {
       "path": "/compiler/NOTICE.txt",
-      "size": 4546,
-      "sha256": "4fedc51c363e60468b0aa1bb7d7adc73f312de721c10641878bb3351843f5e8f"
+      "size": 4778,
+      "sha256": "de22ce55f1218dd06577f1554ec854b49df352ede8961b56821e9f7a37abc5c0"
     },
     {
       "path": "/compiler/pgf-source.tar.gz",
@@ -1472,8 +1472,8 @@
     },
     {
       "path": "/compiler/worker.js",
-      "size": 2028,
-      "sha256": "1419a9fe213538899db949578adedcdb905a9eb244a2dafe90ef40b029562f19"
+      "size": 4360,
+      "sha256": "4bf02a9ce02d9de04ba4a5bcd379c45a335f3eeaa59d6fc94e352c6cb2d012b9"
     },
     {
       "path": "/compiler/xcolor-source.tar.gz",

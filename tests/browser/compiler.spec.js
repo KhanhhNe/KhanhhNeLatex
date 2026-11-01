@@ -370,3 +370,23 @@ test('timeout, dispatch, status, loading and decoding errors release workers and
   expect(result.postsAfterCancellation).toBe(0);
   expect(result.active).toBeNull();
 });
+
+test('startup preparation rejects oversized packages, releases its worker and retries', async ({ page, context }) => {
+  await loadCompiler(page);
+  await context.route('**/compiler/tex/article.cls', route => route.fulfill({
+    contentType: 'application/octet-stream', body: Buffer.alloc(193 * 1024),
+  }));
+  const failure = await page.evaluate(async () => {
+    const compiler = new window.LatexCompiler();
+    const message = await compiler.warmup().then(() => null, error => error.message);
+    return { message, warming: compiler.warming };
+  });
+  expect(failure.message).toContain('startup packages exceeded their memory limit');
+  expect(failure.warming).toBeNull();
+  await context.unroute('**/compiler/tex/article.cls');
+  const magic = await page.evaluate(async source => {
+    const result = await new window.LatexCompiler().compile(source);
+    return new TextDecoder().decode(new Uint8Array(result.pdf).slice(0, 5));
+  }, source);
+  expect(magic).toBe('%PDF-');
+});

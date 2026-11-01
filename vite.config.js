@@ -14,7 +14,7 @@ export default defineConfig({
       order: 'post',
       handler(html, context) {
         const entry = context.bundle && Object.values(context.bundle).find(chunk => chunk.type === 'chunk' && chunk.name === 'engine-start' && chunk.isEntry);
-        return { html, tags: [{ tag: 'script', attrs: { type: 'module', src: entry ? `/${entry.fileName}` : '/src/engine-start.js' }, injectTo: 'head-prepend' }] };
+        return { html, tags: [{ tag: 'script', attrs: { type: 'module', async: true, src: entry ? `/${entry.fileName}` : '/src/engine-start.js' }, injectTo: 'head-prepend' }] };
       },
     },
   }, {
