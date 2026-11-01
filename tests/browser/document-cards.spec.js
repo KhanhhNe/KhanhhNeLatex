@@ -36,8 +36,9 @@ for (const [profile, options] of [
         if (route.request().method() === 'GET') {
           return route.fulfill({ json: { documents: shared ? [shared] : [] } });
         }
-        shared = { id: 'shared-cloud', title: longTitle, source, revision: 1, updated_at: Date.now() - 60000 };
-        return route.fulfill({ json: { document: { id: shared.id, revision: 1 } } });
+        shared = { id: 'shared-cloud', code: route.request().postDataJSON().code,
+          title: longTitle, source, revision: 1, updated_at: Date.now() - 60000 };
+        return route.fulfill({ json: { document: { id: shared.id, code: shared.code, revision: 1 } } });
       });
       await page.route('**/api/documents/shared-cloud', route => {
         accountOpens++;
