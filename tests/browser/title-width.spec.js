@@ -59,7 +59,8 @@ for (const browserType of [chromium, webkit]) {
             controlsVisible: true, touchHeight: true, noPageOverflow: true, mobileFont: true,
           });
           if (label === 'short') expect((await input.boundingBox()).width).toBeLessThan(100);
-          if (label === 'long') expect((await input.boundingBox()).width).toBeGreaterThan(210);
+          // The phone toolbar is one compact row, so a long title takes the remaining width beside the controls.
+          if (label === 'long') expect((await input.boundingBox()).width).toBeGreaterThan(profile === 'iphone' ? 120 : 210);
           if (process.env.TITLE_ARTIFACTS && ['short', 'long'].includes(label)) {
             await input.blur();
             await page.screenshot({ path: join(process.env.TITLE_ARTIFACTS, `title-after-${browserType.name()}-${profile}-${label}.png`) });

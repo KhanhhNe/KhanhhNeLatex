@@ -1,4 +1,5 @@
 import { test, expect, webkit } from '@playwright/test';
+import { mobileAction } from './mobile-menu.js';
 import { editorReady, fillSource } from './source-editor.js';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -148,14 +149,15 @@ test('real two-finger pinch zooms only the PDF, preserves its anchor and support
   const client = await context.newCDPSession(page);
   const viewport = page.locator('.pdf-viewport');
   const box = await viewport.boundingBox();
-  const x = box.x + box.width / 2, y = box.y + box.height / 2;
-  const state = () => page.evaluate(() => {
+  // Pinch in the upper third so a 2x zoom of a page shorter than the tall reading viewport can still keep its anchor.
+  const x = box.x + box.width / 2, y = box.y + box.height / 3;
+  const state = () => page.evaluate(offsetY => {
     const view = document.querySelector('.pdf-viewport'), sheet = document.querySelector('.pdf-sheet');
     const scale = Number(document.querySelector('.pdf-pages').dataset.zoom);
     return { scale, anchorX: (view.scrollLeft + view.clientWidth / 2 - sheet.offsetLeft) / scale,
-      anchorY: (view.scrollTop + view.clientHeight / 2 - sheet.offsetTop) / scale,
+      anchorY: (view.scrollTop + offsetY - sheet.offsetTop) / scale,
       pageScale: visualViewport.scale, top: view.scrollTop, workers: window.compilerStarts };
-  });
+  }, y - box.y);
   const before = await state();
   const touches = distance => [{ x: x - distance, y, id: 1 }, { x: x + distance, y, id: 2 }];
   await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touches(30) });
@@ -170,9 +172,9 @@ test('real two-finger pinch zooms only the PDF, preserves its anchor and support
   expect(Math.abs(after.anchorY - before.anchorY)).toBeLessThan(2);
   expect(after.workers).toBe(before.workers);
   await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 3 }] });
-  await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - 60, id: 3 }] });
+  await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + 60, id: 3 }] });
   await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  expect((await state()).top).toBeGreaterThan(after.top + 40);
+  expect((await state()).top).toBeLessThan(after.top - 40);
   await context.close();
 });
 
@@ -223,7 +225,8 @@ test('hidden mobile preview can finish a replacement without losing zoom or timi
   await expect(page.locator('.pdf-viewer output')).not.toHaveText(initialZoom);
   const zoom = await page.locator('.pdf-viewer output').textContent();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Live preview', exact: true }).check();
+  await (await mobileAction(page, 'Live preview', 'label')).check();
+  await page.keyboard.press('Escape');
   await fillSource(page, String.raw`\documentclass{article}\begin{document}Replacement PDF.\end{document}`);
   // Live compilation is intentionally allowed to complete while Source stays active.
   await expect(page.locator('.pdf-viewer[title="Compiled PDF"]')).not.toHaveAttribute('data-src', initialUrl);
