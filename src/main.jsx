@@ -5,6 +5,7 @@ import { api, drafts, download, readTex } from './storage.js';
 import LatexEditor from './components/LatexEditor.jsx';
 import ProjectsView from './components/ProjectsView.jsx';
 import Icon from './components/Icon.jsx';
+import useWorkspaceResize from './components/workspace-resize.js';
 import './style.css';
 
 const starter = String.raw`\documentclass[11pt]{article}
@@ -60,6 +61,7 @@ function App() {
   const [saveState, setSaveState] = useState('Loading local drafts...');
   const [error, setError] = useState('');
   const [view, setView] = useState(() => location.hash === '#workspace' ? 'workspace' : 'projects');
+  const sizing = useWorkspaceResize(view === 'workspace');
   const [auth, setAuth] = useState(null);
   const [busy, setBusy] = useState(false);
   const [compiling, setCompiling] = useState(false);
@@ -513,7 +515,7 @@ function App() {
         }}><Icon name="user" /><span className="account-name">{user.username}</span><span>Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}><Icon name="user" />Sign in</button>}
       </div>
     </header>
-    <div className="workspace">
+    <div className="workspace" ref={sizing.workspace}>
       <aside id="document-sidebar" className={`sidebar ${sidebar ? 'open' : ''}`}>
         <div className="sidebar-heading"><span>Documents</span><Icon name="panel" /></div>
         <button className="new-document" onClick={() => newDocument()} disabled={busy}><Icon name="plus" /><span>New document</span></button>
@@ -531,6 +533,9 @@ function App() {
           <button className="delete-button" onClick={remove} disabled={!current || busy}>Delete current document</button>
         </div>
       </aside>
+      <div ref={sizing.sidebarHandle} className="pane-separator" role="separator" tabIndex={0}
+        aria-label="Document sidebar width" aria-orientation="vertical" aria-controls="document-sidebar"
+        title="Drag or use arrow keys to resize. Enter or double-click to reset." />
       <main className="main">
         <div className="document-toolbar">
           <div className="document-title"><span className="breadcrumb">Projects <span aria-hidden="true">/</span></span>
@@ -547,7 +552,7 @@ function App() {
           </div>
         </div>
         <div className="mobile-tabs"><button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => setTab('source')}>Source</button><button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>PDF preview</button></div>
-        <div className="panels">
+        <div className="panels" ref={sizing.panels}>
           <section id="source-panel" className={`editor-panel ${tab === 'source' ? 'mobile-active' : ''}`} aria-label="LaTeX source editor">
             <div className="panel-toolbar source-toolbar"><span className="source-file-tab"><Icon name="file" />main.tex</span><span className="tiny">LaTeX</span>
               <button className="compile-button source-compile" aria-label={compiling ? 'Cancel' : 'Compile'} disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>{compiling ? 'Cancel' : 'Compile'}</button>
@@ -560,6 +565,9 @@ function App() {
             </div>
             <div className="editor-footer"><span>LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>
           </section>
+          <div ref={sizing.splitHandle} className="pane-separator" role="separator" tabIndex={0}
+            aria-label="Source editor width" aria-orientation="vertical" aria-controls="source-panel"
+            title="Drag or use arrow keys to resize. Enter or double-click to reset." />
           <section id="preview-panel" className={`preview-panel ${tab === 'preview' ? 'mobile-active' : ''}`} aria-label="PDF preview">
             <div className="panel-toolbar preview-toolbar"><div className="preview-actions">
               <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>

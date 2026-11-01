@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import './LatexEditor.css';
 
 const validSource = value => value.length <= 100000 && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffd]/u.test(value);
+const editorMetrics = host => {
+  const style = getComputedStyle(host);
+  return { fontSize: parseFloat(style.fontSize), lineHeight: Math.round(parseFloat(style.lineHeight)) };
+};
 let engine;
 export const preloadLatexEditor = () => engine ||= import('./monaco.js').catch(error => {
   engine = null;
@@ -13,6 +17,7 @@ export default function LatexEditor({
   documentKey, readOnly = false, loading = false,
 }) {
   const host = useRef(null);
+  const metricsProbe = useRef(null);
   const editor = useRef(null);
   const fallback = useRef(null);
   const replacing = useRef(false);
@@ -79,7 +84,7 @@ export default function LatexEditor({
         model, theme: 'folio', ariaLabel: current.ariaLabel,
         readOnly: current.readOnly || current.loading,
         fontFamily: '"Cascadia Code", Consolas, "Liberation Mono", monospace',
-        fontSize: 14, lineHeight: 24, tabSize: 2, insertSpaces: true,
+        ...editorMetrics(host.current), tabSize: 2, insertSpaces: true,
         minimap: { enabled: false }, wordWrap: 'off',
         scrollBeyondLastLine: false, folding: false, glyphMargin: false,
         lineNumbersMinChars: 3, overviewRulerLanes: 0, hideCursorInOverviewRuler: true,
@@ -128,13 +133,15 @@ export default function LatexEditor({
       });
       resize = new ResizeObserver(() => {
         if (host.current?.clientWidth && host.current?.clientHeight) {
-          const fontSize = (innerWidth <= 1050 ? 16 : 14) * parseFloat(getComputedStyle(document.documentElement).fontSize) / 16;
-          if (instance.getOption(monaco.editor.EditorOption.fontSize) !== fontSize)
-            instance.updateOptions({ fontSize, lineHeight: Math.round(fontSize * 1.7) });
+          const metrics = editorMetrics(host.current);
+          if (instance.getOption(monaco.editor.EditorOption.fontSize) !== metrics.fontSize ||
+            instance.getOption(monaco.editor.EditorOption.lineHeight) !== metrics.lineHeight)
+            instance.updateOptions(metrics);
           instance.layout();
         }
       });
       resize.observe(host.current);
+      resize.observe(metricsProbe.current);
       instance.layout();
       handoff.current = focused ? selection : null;
       setReady(true);
@@ -178,6 +185,7 @@ export default function LatexEditor({
   }, [value, readOnly, loading, ariaLabel, ready]);
 
   return <div className="latex-editor" onKeyDownCapture={shortcut} data-language="latex">
+    <span ref={metricsProbe} className="latex-editor-metrics" aria-hidden="true" />
     <div ref={host} className="latex-editor-host" hidden={!ready} />
     {!ready && <textarea ref={fallback} className="latex-editor-fallback"
       aria-label={ariaLabel} aria-describedby="source-shortcuts"
