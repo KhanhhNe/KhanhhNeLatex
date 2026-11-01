@@ -11,6 +11,21 @@
       "sha256": "dea4a7400730c1164797100c767c4ae439032ceff021bbc2e28181229e48fd86"
     },
     {
+      "path": "/compiler/format-assets.js",
+      "size": 251,
+      "sha256": "30f3b89ccd897cba4e2ac0fdac75e9586fb56d966f8050f659b0e4827d766a85"
+    },
+    {
+      "path": "/compiler/formats/pdftex-3134ef8cbfa829780fc0b63b5320fb680e8f895f0c7f48ecb82af159098760ec.fmt.gz",
+      "size": 2081999,
+      "sha256": "5cb7e2a2528853958f60b4046eaef0a421a8ec038accb5d3f025876ac61dd168"
+    },
+    {
+      "path": "/compiler/formats/xetex-fecae874377a2f7cb31811e41edabbda1e19f762d00630a8faa9fb12043b5e5f.fmt.gz",
+      "size": 4270402,
+      "sha256": "a683752c143537dfbcc6bba6c55e45fafc491bf46bfa348ff84a5e1739d452cd"
+    },
+    {
       "path": "/compiler/manifest.js",
       "size": 5683,
       "sha256": "29b10d9e7294ac4e02e215213b84a6e66a456c289d09f72c3e1a4f63d8ec7250"
@@ -22,8 +37,8 @@
     },
     {
       "path": "/compiler/native-package-loader.js",
-      "size": 912,
-      "sha256": "a90024f7fd7a280b3a89c646da61e6f597e93f4a3403f1d8bb1787e9d9adaa91"
+      "size": 2020,
+      "sha256": "7bbe47cf78c4c873588d1c8020d0a6051a4fdc8c282633775089e5ba7ff4afcf"
     },
     {
       "path": "/compiler/native-tex/ckx.map",
@@ -542,8 +557,8 @@
     },
     {
       "path": "/compiler/native-worker.js",
-      "size": 1845,
-      "sha256": "0f3cc6016fc19c01f637a84a741d8cb607df65a5f64ffe14963226b453366ff0"
+      "size": 1990,
+      "sha256": "82baca32cc6532b27472d33ccfa5a256017fdce8ade39963ce25873fcca6a0e6"
     },
     {
       "path": "/compiler/NOTICE.txt",
@@ -1457,8 +1472,8 @@
     },
     {
       "path": "/compiler/worker.js",
-      "size": 1038,
-      "sha256": "d9de853a332ba3a65067577792e5e7acf7eb1b3b5d65a628e437d630f627a00b"
+      "size": 2078,
+      "sha256": "4e0ba8cd7217216156e1bfec48dc29155791866d93e82dced51a9f55b551aaa0"
     },
     {
       "path": "/compiler/xcolor-source.tar.gz",

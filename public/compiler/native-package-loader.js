@@ -1,12 +1,28 @@
 importScripts(`/compiler/native-manifest.js${self.location.search}`);
+const post = self.postMessage.bind(self);
+let formatBytes;
+const isXeTeX = self.location.pathname.endsWith('/xetex-worker.js');
+if (isXeTeX) importScripts(`/compiler/format-assets.js${self.location.search}`);
+const prepared = isXeTeX
+  ? fetch(self.TEX_FORMAT_ASSETS.xetex).then(async response => {
+    if (!response.ok) throw new Error('The native browser engine format could not load.');
+    formatBytes = await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  })
+  : Promise.resolve();
+prepared.catch(error => post({ result: 'failed', log: error.message }));
+self.postMessage = (data, ...rest) => {
+  if (!data.cmd && data.result === 'ok') prepared.then(() => post(data, ...rest), () => {});
+  else post(data, ...rest);
+};
 const NativeXHR = self.XMLHttpRequest;
 class NativePackageXHR {
   open(method, url) {
     const key = new URL(url, self.location.href).pathname.split('/xetex/')[1]?.replace(/^47\/\/tex\//, '47/');
     this.name = key;
     this.asset = self.NATIVE_TEX_FILES[key];
+    this.cached = this.asset === 'native-tex/swiftlatexxetex.fmt' && formatBytes;
     this.xhr = null;
-    if (this.asset) {
+    if (this.asset && !this.cached) {
       this.xhr = new NativeXHR();
       this.xhr.open('GET', `/compiler/${this.asset}`, false);
     }
@@ -14,11 +30,16 @@ class NativePackageXHR {
   set responseType(value) { if (this.xhr) this.xhr.responseType = value; }
   set timeout(value) {}
   send() {
-    if (this.xhr) this.xhr.send();
-    else self.postMessage({ cmd: 'missing', name: this.name });
+    if (this.xhr) {
+      post({ cmd: 'phase', phase: 'loading', name: this.name });
+      try { this.xhr.send(); } finally { post({ cmd: 'phase', phase: 'compiling' }); }
+    } else if (!this.cached) self.postMessage({ cmd: 'missing', name: this.name });
   }
-  get status() { return this.xhr?.status === 200 ? 200 : 301; }
-  get response() { return this.xhr?.response; }
+  get status() { return this.cached || this.xhr?.status === 200 ? 200 : 301; }
+  get response() {
+    if (this.cached) { formatBytes = null; return this.cached; }
+    return this.xhr?.response;
+  }
   getResponseHeader() { return this.asset?.split('/').pop(); }
 }
 self.XMLHttpRequest = NativePackageXHR;

@@ -170,7 +170,7 @@ test('conventional virtual filenames resolve exact Google family/style without f
 });
 
 test('native converter resolves bundled absolute OTF paths only through its static manifest', async () => {
-  const self = { location: { href: 'https://app.test/compiler/dvipdf-worker.js?v=fontspec-3', search: '?v=fontspec-3' }, postMessage() {} };
+  const self = { location: { href: 'https://app.test/compiler/dvipdf-worker.js?v=fontspec-3', pathname: '/compiler/dvipdf-worker.js', search: '?v=fontspec-3' }, postMessage() {} };
   const imports = [];
   const scope = { self, URL, importScripts: url => imports.push(url) };
   runInNewContext(await readFile(new URL('../public/compiler/native-manifest.js', import.meta.url), 'utf8'), scope);
@@ -302,7 +302,7 @@ test('downloads reject unsafe URLs, malformed font bytes, oversized streams and 
   await assert.rejects(missing.face(face, signal), /Missing style/);
 });
 
-test('cancelled font preparation cannot create a worker or clear a newer job', async () => {
+test('cancelled font preparation cannot dispatch obsolete input or clear a newer job', async () => {
   let release;
   const fontLoader = { prepare: async () => new Promise(resolve => { release = resolve; }) };
   const workers = [];
@@ -316,16 +316,16 @@ test('cancelled font preparation cannot create a worker or clear a newer job', a
   release({ source: 'obsolete', files: [] });
   await Promise.resolve();
   assert.equal(compiler.active, active);
-  assert.equal(workers.length, 1);
+  assert.equal(workers.length, 2);
   assert.equal(await first, 'Compilation cancelled.');
   assert.equal(await cancelledReadiness, 'Compilation cancelled.');
   compiler.cancel();
   assert.equal(await second, 'Compilation cancelled.');
 });
 
-test('font preparation timeout and oversized face counts fail before worker startup', async () => {
-  const compiler = new LatexCompiler({ timeout: 10, fontLoader: { prepare: async () => new Promise(() => {}) }, workerFactory: () => { throw new Error('Should not start'); } });
-  await assert.rejects(compiler.compile(source), /timed out/);
+test('font preparation uses a loading timeout and rejects oversized face counts before fetching', async () => {
+  const compiler = new LatexCompiler({ timeout: 10, loadTimeout: 20, fontLoader: { prepare: async () => new Promise(() => {}) }, workerFactory: () => ({ terminate() {}, postMessage() {} }) });
+  await assert.rejects(compiler.compile(source), /engine loading timed out/);
   assert.equal(compiler.active, null);
   const input = Array.from({ length: 17 }, (_, i) => `\\fontspec{Family ${i}}`).join('\n');
   const loader = new GoogleFontLoader({ fetcher: () => { throw new Error('Should not fetch'); } });

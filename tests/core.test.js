@@ -53,7 +53,9 @@ test('compiler cancellation and timeout terminate the worker and permit retry', 
   await assert.rejects(result, /cancelled/);
   assert.equal(worker.terminated, true);
   worker = new FakeWorker();
-  await assert.rejects(compiler.compile('loop'), /timed out/);
+  const timeout = compiler.compile('loop');
+  worker.send({ result: 'ok' });
+  await assert.rejects(timeout, /timed out/);
   assert.equal(worker.terminated, true);
 });
 test('compiler errors expose bounded logs and always release memory', async () => {

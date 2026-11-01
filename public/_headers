@@ -6,6 +6,10 @@
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data:; frame-src blob:; object-src blob:; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 /compiler/*
   Cache-Control: public, max-age=3600
+/compiler/formats/*
+  ! Cache-Control
+  Content-Type: application/gzip
+  Cache-Control: public, max-age=31536000, immutable
 /source.tar.gz
   Content-Type: application/gzip
   Content-Disposition: attachment; filename="khanhhne-latex-source.tar.gz"
