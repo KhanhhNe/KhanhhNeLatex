@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import './ProjectsView.css';
 import Icon from './Icon.jsx';
+import DocumentAvailability from './DocumentAvailability.jsx';
 
-export default function ProjectsView({ documents, onOpen, onNew, onImport, onSignIn, username, onHelp }) {
+export default function ProjectsView({ documents, onOpen, onOpenCloud, onNew, onImport, onSignIn, username, onHelp }) {
   const [query, setQuery] = useState('');
   const [grid, setGrid] = useState(false);
   const [sort, setSort] = useState('edited');
@@ -37,11 +38,17 @@ export default function ProjectsView({ documents, onOpen, onNew, onImport, onSig
           <button onClick={() => order('edited')} aria-label={`Sort by last edited${sort === 'edited' ? ascending ? ', ascending' : ', descending' : ''}`}>Last edited <span aria-hidden="true">{sort === 'edited' ? ascending ? '↑' : '↓' : '↕'}</span></button>
         </div>
         {projects.length ? <ul className={`projects-list ${grid ? 'projects-grid' : ''}`} aria-label="Projects">{projects.map(document =>
-          <li key={document.id}><button className="projects-open" onClick={() => onOpen(document)}>
-            <Icon name="file" className="projects-file" />
-            <span className="projects-name">{document.title}<small>{document.cloudId ? 'Linked to account' : 'On this device'}</small></span>
-            <time dateTime={new Date(document.updated_at).toISOString()}>{new Date(document.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</time>
-          </button></li>)}</ul> : <div className="projects-empty">
+          <li key={document.key || document.id}><div className="projects-row">
+            <button className="projects-open" onClick={() => onOpen(document)}>
+              <Icon name="file" className="projects-file" />
+              <span className="projects-name">{document.title}<small><DocumentAvailability
+                localAvailable={document.localAvailable} cloudAvailable={document.cloudAvailable} /></small></span>
+              <time dateTime={new Date(document.updated_at).toISOString()}>{new Date(document.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</time>
+            </button>
+            {document.localAvailable && document.cloudAvailable && <button className="projects-cloud-open"
+              aria-label={`Open account version of ${document.title}`} title="Open account version"
+              onClick={() => onOpenCloud(document.cloudItem)}><Icon name="cloud" /></button>}
+          </div></li>)}</ul> : <div className="projects-empty">
           <h2>{query ? 'No matching documents' : 'Make room for your next idea'}</h2>
           <p>{query ? 'Try another name or start a new document.' : 'Begin with a local LaTeX document.'}</p>
           <button className="projects-new" onClick={onNew}>Start writing</button>

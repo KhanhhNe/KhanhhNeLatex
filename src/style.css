@@ -28,13 +28,18 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
 .sidebar-heading .ui-icon{color:#999;width:16px}
 .new-document{justify-content:flex-start;width:100%;padding:8px 10px;color:#e4e4e4;border:1px solid #3b3b3b;background:#242424}
 .new-document span{font-size:.8125rem}
-.section-label{display:flex;justify-content:space-between;gap:8px;margin:20px 10px 6px;font-size:.75rem;color:#aaa}
-.section-label span{color:#b4b4b4}
+.document-list{min-height:0;overflow:auto}
+.document-row{display:flex;align-items:center;gap:2px}
 .document-item{display:flex;justify-content:flex-start;width:100%;text-align:left;gap:10px;padding:10px;border-radius:7px;margin-bottom:3px}
+.document-row .document-item{min-width:0;flex:1}
+.document-cloud-open{display:grid;place-items:center;width:44px;min-width:44px;min-height:44px;margin-bottom:3px;border-radius:7px;color:#a8d1c1}
+.document-cloud-open .ui-icon{width:16px;height:16px}
 .document-item.selected{background:#303030;color:#fff}
 .file-icon{width:17px;height:20px;color:#b8c3cb}
 .document-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8125rem;font-weight:450}
 .document-name small{display:block;color:#b0b0b0;font-size:.6875rem;font-weight:400;margin-top:3px}
+.document-name .document-availability{gap:4px}
+.document-name .document-availability .ui-icon{width:13px;height:13px}
 .sidebar-note{font-size:.8125rem;line-height:1.6;color:#b4b4b4;padding:0 10px}
 .sidebar-bottom{margin-top:auto;padding-top:20px}
 .import-button{justify-content:flex-start;width:100%;padding:8px 10px;color:#c9c9c9;font-size:.8125rem}
