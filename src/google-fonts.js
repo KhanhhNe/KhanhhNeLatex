@@ -48,44 +48,137 @@ function group(text, start, open, close) {
 
 export function fontFace(name) {
   const family = name.trim().replace(/\s+/g, ' ');
-  if (!validFamily(family)) throw new Error('Font names must be literal Google Fonts family names (letters, digits, spaces or hyphens; at most 80 characters). URLs, paths and TeX macros are not supported.');
+  if (!validFamily(family)) throw new Error('Font names must resolve to literal Google Fonts family names (letters, digits, spaces or hyphens; at most 80 characters). URLs, paths and computed TeX names are not supported.');
   return { family, weight: 400, italic: false, key: `${family.toLowerCase()}:400:0` };
+}
+
+export function usesFontspec(source) {
+  return /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\]\s*)?\{[^}]*\bfontspec\b/.test(fontSource(source));
+}
+
+function fontMacros(text) {
+  const definitions = [];
+  const tokens = /\\(?:(?:newcommand|renewcommand|providecommand)\b\*?|(?:def|gdef|edef|xdef|let)\b)|\\if[A-Za-z@]*\b|\\fi\b|[{}]/g;
+  let depth = 0;
+  let conditional = 0;
+  let match;
+  while ((match = tokens.exec(text))) {
+    const token = match[0].replace(/\*$/, '');
+    if (token === '{') { depth++; continue; }
+    if (token === '}') { depth--; continue; }
+    if (token === '\\fi') { conditional = Math.max(0, conditional - 1); continue; }
+    if (token.startsWith('\\if')) { conditional++; continue; }
+    const name = text.slice(tokens.lastIndex).match(/^\s*(?:\{(\\[A-Za-z@]+)\}|(\\[A-Za-z@]+))/);
+    if (!name) continue;
+    let pos = tokens.lastIndex + name[0].length;
+    while (/\s/.test(text[pos] || '') && pos < text.length) pos++;
+    let supported = depth === 0 && conditional === 0 && !['\\edef', '\\xdef', '\\let'].includes(token);
+    if (text[pos] === '[') {
+      const args = group(text, pos, '[', ']');
+      supported &&= args.value.trim() === '0';
+      pos = args.end;
+      while (/\s/.test(text[pos] || '') && pos < text.length) pos++;
+    }
+    if (text[pos] !== '{') supported = false;
+    const body = text[pos] === '{' ? group(text, pos, '{', '}') : null;
+    if (body) tokens.lastIndex = body.end;
+    if (token === '\\providecommand' && definitions.some(definition => definition.name === (name[1] || name[2]))) continue;
+    if (definitions.length >= 128) throw new Error('Font-name macro scanning supports at most 128 simple command definitions.');
+    definitions.push({ name: name[1] || name[2], value: body?.value.trim(), start: match.index, supported });
+  }
+  return (value, at) => {
+    const resolve = (name, chain) => {
+      const macro = name.trim();
+      if (!/^\\[A-Za-z@]+$/.test(macro)) return macro;
+      if (chain.length >= 8 || chain.includes(macro)) throw new Error('Font-name macros must be acyclic, with at most eight literal aliases.');
+      const definition = definitions.findLast(definition => definition.name === macro && definition.start < at);
+      if (!definition?.supported || definition.value === undefined)
+        throw new Error(`Cannot resolve font-name macro ${macro}. Use an unconditional top-level \\newcommand or \\def with a literal name before the font declaration; arguments and computed definitions are unsupported.`);
+      return resolve(definition.value, [...chain, macro]);
+    };
+    return resolve(value, []);
+  };
+}
+
+function fontOptions(options, resolve, faces) {
+  if (options.length > 512) throw new Error('Font options exceed the 512-character limit.');
+  const features = [];
+  const choices = {
+    Ligatures: /^(?:TeX|NoTeX|Common|NoCommon|Required|NoRequired|Rare|NoRare|Discretionary|NoDiscretionary|Historic|NoHistoric)(?:\s*,\s*(?:TeX|NoTeX|Common|NoCommon|Required|NoRequired|Rare|NoRare|Discretionary|NoDiscretionary|Historic|NoHistoric))*$/,
+    Numbers: /^(?:OldStyle|Lining|Proportional|Monospaced|SlashedZero|NoSlashedZero)(?:\s*,\s*(?:OldStyle|Lining|Proportional|Monospaced|SlashedZero|NoSlashedZero))*$/,
+    Kerning: /^(?:On|Off)$/,
+    Scale: /^(?:MatchLowercase|MatchUppercase|(?:\d+(?:\.\d*)?|\.\d+))$/,
+    LetterSpace: /^-?(?:\d+(?:\.\d*)?|\.\d+)$/,
+    Color: /^[A-Fa-f0-9]{6}(?:[A-Fa-f0-9]{2})?$/,
+    Script: /^[A-Za-z ]{1,32}$/,
+    Language: /^[A-Za-z ]{1,48}$/,
+    Renderer: /^(?:OpenType|ICU)$/,
+    Mapping: /^tex-text$/,
+  };
+  for (const option of options.split(/,(?![^{}]*\})/).filter(option => option.trim())) {
+    const match = option.trim().match(/^([A-Za-z]+)\s*=\s*(?:\{([^{}]*)\}|([^{}]*))$/);
+    if (!match) throw new Error('Font options must be simple key=value settings, with braced comma-separated values.');
+    const [, key, braced, plain] = match;
+    const value = (braced ?? plain).trim();
+    if (['UprightFont', 'BoldFont', 'ItalicFont', 'BoldItalicFont'].includes(key) && faces) {
+      if (!value && key !== 'UprightFont') faces[key] = null;
+      else faces[key] = fontFace(resolve(value));
+    } else {
+      if (!choices[key]?.test(value) ||
+          (key === 'Scale' && !value.startsWith('Match') && !(Number(value) >= 0.1 && Number(value) <= 10)) ||
+          (key === 'LetterSpace' && !(Number(value) >= -5 && Number(value) <= 20)))
+        throw new Error(`Unsupported fontspec option ${key}=${value}. Use face names or documented safe features; paths, URLs, computed features and external files are unsupported.`);
+      features.push(`${key}={${value}}`);
+    }
+  }
+  return features;
 }
 
 export function detectFonts(source) {
   if (typeof source !== 'string' || source.length > 100000) throw new Error('Compile a text document of at most 100,000 characters.');
   const text = fontSource(source);
+  let macros;
+  const resolve = (value, at) => {
+    if (!value.includes('\\')) return value;
+    macros ||= fontMacros(text);
+    return macros(value, at);
+  };
   const declarations = [];
-  const regex = /\\(setmainfont|setsansfont|setmonofont|newfontfamily|fontspec)\b/g;
+  const regex = /\\(setmainfont|setsansfont|setmonofont|newfontfamily|fontspec|defaultfontfeatures|addfontfeatures|addfontfeature)\b/g;
   let match;
   while ((match = regex.exec(text))) {
     let pos = regex.lastIndex;
     const space = () => { while (/\s/.test(text[pos] || '') && pos < text.length) pos++; };
     space();
+    if (['defaultfontfeatures', 'addfontfeatures', 'addfontfeature'].includes(match[1])) {
+      if (text[pos] === '[') { pos = group(text, pos, '[', ']').end; space(); }
+      const options = group(text, pos, '{', '}');
+      fontOptions(options.value, value => resolve(value, match.index));
+      regex.lastIndex = options.end;
+      continue;
+    }
     if (match[1] === 'newfontfamily') {
       const command = text.slice(pos).match(/^(?:\\[A-Za-z]+|\{\\[A-Za-z]+\})/);
       if (!command) throw new Error('Use \\newfontfamily\\name{Google Family}. Computed font commands are unsupported.');
       pos += command[0].length; space();
     }
+    const prefix = text.slice(match.index, pos);
     let options = '';
     if (text[pos] === '[') { const value = group(text, pos, '[', ']'); options = value.value; pos = value.end; space(); }
     const family = group(text, pos, '{', '}');
-    if (text.slice(family.end).match(/^\s*\[/)) throw new Error('Put font options before the braced family name, for example \\setmainfont[BoldFont={Roboto Bold}]{Roboto}.');
-    const upright = fontFace(family.value);
-    const faces = { UprightFont: upright };
-    if (options) {
-      if (options.length > 512) throw new Error('Font options exceed the 512-character limit.');
-      for (const option of options.split(/,(?![^{}]*\})/)) {
-        const value = option.trim().match(/^(UprightFont|BoldFont|ItalicFont|BoldItalicFont)\s*=\s*(?:\{([^{}]+)\}|([^{}]+))$/);
-        if (!value) throw new Error('Supported font options: UprightFont, BoldFont, ItalicFont and BoldItalicFont with literal family/style names. Other fontspec options are not supported.');
-        faces[value[1]] = fontFace(value[2] || value[3]);
-      }
+    pos = family.end; space();
+    let end = family.end;
+    if (text[pos] === '[') {
+      const trailing = group(text, pos, '[', ']');
+      options += `${options ? ',' : ''}${trailing.value}`;
+      end = trailing.end;
     }
-    declarations.push({ start: match.index, end: family.end, prefix: text.slice(match.index, pos).replace(/\[[\s\S]*\]\s*$/, ''), faces });
-    regex.lastIndex = family.end;
+    const upright = fontFace(resolve(family.value, match.index));
+    const faces = { UprightFont: upright };
+    const features = fontOptions(options, value => resolve(value, match.index), faces);
+    declarations.push({ start: match.index, end, prefix, faces, features });
+    regex.lastIndex = end;
   }
-  if (!declarations.length && /\\usepackage(?:\[[^\]]*\])?\{[^}]*\bfontspec\b/.test(text))
-    throw new Error('Add a literal \\setmainfont{Google Family} declaration when using fontspec.');
   return declarations;
 }
 
@@ -197,11 +290,11 @@ export class GoogleFontLoader {
     const styled = (face, weight, italic) => ({ family: face.family, weight, italic, key: `${face.family.toLowerCase()}:${weight}:${Number(italic)}` });
     for (const declaration of declarations) {
       const upright = declaration.faces.UprightFont;
-      if (bold && !declaration.faces.BoldFont)
+      if (bold && declaration.faces.BoldFont === undefined)
         declaration.faces.BoldFont = styled(upright, 700, false);
-      if (italic && !declaration.faces.ItalicFont) declaration.faces.ItalicFont = styled(upright, 400, true);
-      if (bold && italic && !declaration.faces.BoldItalicFont) declaration.faces.BoldItalicFont = styled(upright, 700, true);
-      for (const face of Object.values(declaration.faces)) if (!faces.has(face.key)) faces.set(face.key, face);
+      if (italic && declaration.faces.ItalicFont === undefined) declaration.faces.ItalicFont = styled(upright, 400, true);
+      if (bold && italic && declaration.faces.BoldItalicFont === undefined) declaration.faces.BoldItalicFont = styled(upright, 700, true);
+      for (const face of Object.values(declaration.faces)) if (face && !faces.has(face.key)) faces.set(face.key, face);
     }
     if (faces.size > MAX_FONT_FACES) throw new Error(`Use at most ${MAX_FONT_FACES} distinct font faces per document.`);
     const files = [];
@@ -217,13 +310,13 @@ export class GoogleFontLoader {
     }
     let prepared = source;
     for (const declaration of [...declarations].reverse()) {
-      const names = Object.entries(declaration.faces).filter(([style]) => style !== 'UprightFont')
+      const names = Object.entries(declaration.faces).filter(([style, face]) => style !== 'UprightFont' && face)
         .map(([style, face]) => `${style}=${faces.get(face.key).filename}`);
       // Explicit empty styles prevent fontspec's automatic system-font lookup/substitution.
       for (const style of ['BoldFont', 'ItalicFont', 'BoldItalicFont']) {
         if (!declaration.faces[style]) names.push(`${style}={}`);
       }
-      const replacement = `${declaration.prefix}[${names.join(',')}]{${faces.get(declaration.faces.UprightFont.key).filename}}`;
+      const replacement = `${declaration.prefix}[${[...declaration.features, ...names].join(',')}]{${faces.get(declaration.faces.UprightFont.key).filename}}`;
       prepared = prepared.slice(0, declaration.start) + replacement + prepared.slice(declaration.end);
     }
     return { source: `\\tracinglostchars=2\n\\AtBeginDocument{\\tracinglostchars=2}\n${prepared}`, files };

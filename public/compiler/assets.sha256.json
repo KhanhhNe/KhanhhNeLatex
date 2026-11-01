@@ -17,13 +17,13 @@
     },
     {
       "path": "/compiler/native-manifest.js",
-      "size": 7321,
-      "sha256": "378b8ee24713c42b82bf7779166b5ae009731e58b67324169be6b010428c32a9"
+      "size": 8595,
+      "sha256": "12b5e0f04dae3bc4d29a9d4b101c156e6719f9f874335872ff14f2e84271a45c"
     },
     {
       "path": "/compiler/native-package-loader.js",
-      "size": 836,
-      "sha256": "8666a64807be0af4741d05237684a5c04a427dfb0451d9b474e69508784522e0"
+      "size": 889,
+      "sha256": "ccb473e63840359baa3001214ff8695160dacd93cdbf6da02c2c384e6cb79669"
     },
     {
       "path": "/compiler/native-tex/ckx.map",
@@ -66,6 +66,26 @@
       "sha256": "3152a0f1cad589c575ac7997f66b4f5d3a62f04c73a1d7c73c5269adcb9b4665"
     },
     {
+      "path": "/compiler/native-tex/lmmono10-italic.otf",
+      "size": 63584,
+      "sha256": "14e6328a5383d2b927c47051093ce0aff60deea07e6df71b8b99ee8d9c2ff8f2"
+    },
+    {
+      "path": "/compiler/native-tex/lmmono10-regular.otf",
+      "size": 64684,
+      "sha256": "22deb6d3be3ffcb40b33f0e010afb256c677d97c2a2bdee1f5740cdc97751558"
+    },
+    {
+      "path": "/compiler/native-tex/lmmonolt10-bold.otf",
+      "size": 66332,
+      "sha256": "2f4ae1bd30d4203a1c74c61d61dddbd5e2c2d5a7001d456b1b98e08b7c47ffb9"
+    },
+    {
+      "path": "/compiler/native-tex/lmmonolt10-boldoblique.otf",
+      "size": 75300,
+      "sha256": "a739b6deaafe0b9e8ae1eec9db1f425c52e1f6f483ca8e07e359bdd118310bba"
+    },
+    {
       "path": "/compiler/native-tex/lmroman10-bold.otf",
       "size": 111240,
       "sha256": "102fe06c430a8b681b2bf6876b7cd967ae4d47b4b6b41d915eb7913b726d9fb1"
@@ -84,6 +104,26 @@
       "path": "/compiler/native-tex/lmroman10-regular.otf",
       "size": 111536,
       "sha256": "1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852"
+    },
+    {
+      "path": "/compiler/native-tex/lmsans10-bold.otf",
+      "size": 107448,
+      "sha256": "a597b710326c1a8a2c7238d808e5d38711638a72a32383478db4829d63afd687"
+    },
+    {
+      "path": "/compiler/native-tex/lmsans10-boldoblique.otf",
+      "size": 114984,
+      "sha256": "e45673d84754a94f2f053bd4c15950b4b320144fbb622c630a26fd7b68cfabc5"
+    },
+    {
+      "path": "/compiler/native-tex/lmsans10-oblique.otf",
+      "size": 101412,
+      "sha256": "1b38b36efc21f9d3f34edf6a13f9d71f59c41f824e790f5d3ee5ba5b4936f377"
+    },
+    {
+      "path": "/compiler/native-tex/lmsans10-regular.otf",
+      "size": 95128,
+      "sha256": "d431b786b9b603662718e79cfe9b441f47a8b0b3e854dde89d5acb3ed7cfd682"
     },
     {
       "path": "/compiler/native-tex/pdfglyphlist.txt",

@@ -23,6 +23,8 @@ async function acquire(url, name) {
 await acquire(formatUrl, manifest['10/swiftlatexxetex.fmt']);
 const keys = [
   '47/lmroman10-regular', '47/lmroman10-bold', '47/lmroman10-italic', '47/lmroman10-bolditalic',
+  '47/lmsans10-regular', '47/lmsans10-bold', '47/lmsans10-oblique', '47/lmsans10-boldoblique',
+  '47/lmmono10-regular', '47/lmmono10-italic', '47/lmmonolt10-bold', '47/lmmonolt10-boldoblique',
   '41/tex-text.tec', '26/fontspec.sty', '26/xparse.sty', '26/expl3.sty',
   '26/l3backend-xdvipdfmx.def', '26/fontspec-xetex.sty', '26/tuenc.def', '26/fontspec.cfg', '26/ts1cmr.fd',
   '11/kanjix.map', '11/ckx.map', '11/texglyphlist.txt', '11/pdfglyphlist.txt', '11/glyphlist.txt',
@@ -37,5 +39,6 @@ for (const key of keys) {
   if (bytes.length > 25 * 1024 * 1024) throw new Error('Cloudflare per-file limit exceeded.');
   await writeFile(new URL(`native-tex/${name}`, compiler), bytes);
   manifest[key] = `native-tex/${name}`;
+  if (key.startsWith('47/')) manifest[`47/${name}`] = `native-tex/${name}`;
 }
 await writeFile(new URL('native-manifest.js', compiler), `self.NATIVE_TEX_FILES = ${JSON.stringify(manifest, null, 2)};\n`);
