@@ -30,6 +30,8 @@ Mobile regressions run Chromium and WebKit with the iPhone 13 Pro profile at 390
 
 ## Writing and persistence
 
+On desktop, drag the subtle separators to resize the document sidebar or source/PDF split. Focus a separator and use Left/Right arrows (Shift for larger steps), Home/End for its limits, or Enter/double-click to restore its default. Escape cancels an active drag. Bounded layout preferences stay on this device, separate from document saves; resizing never compiles or saves source. Narrow screens retain the document drawer and source/PDF tabs.
+
 - One text-only UTF-8 `.tex` file per document, maximum 100,000 characters; imports also limited to 400 KB. No image, font, binary or other source uploads.
 - IndexedDB device drafts save after a 300 ms pause and flush on document switches/visibility changes. Pending/failed saves are explicit; pending writes warn before navigation. Export `.tex` for backups, especially before clearing browser data or changing devices. Device drafts are not encrypted; use a trusted personal device.
 - Local drafts save automatically. Use **Save to account** once to link a local draft; while signed in as its owner, subsequent edits automatically save to D1 after an 800 ms pause. Cloud writes are serialized/coalesced, preserve revision checks, and show failures without discarding the local draft. Ctrl/Cmd+S only forces a fresh compilation, never an immediate save. Unlinked drafts stay local; sign-in is optional for editing, compilation and exports.

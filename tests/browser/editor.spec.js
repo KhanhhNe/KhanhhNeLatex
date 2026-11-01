@@ -362,11 +362,12 @@ test('desktop panes fill available width while tablet and enlarged text reflow w
     const sizes = await page.evaluate(() => {
       const box = selector => document.querySelector(selector).getBoundingClientRect();
       const editor = box('.editor-panel'), preview = box('.preview-panel'), sidebar = box('.sidebar'), pdf = box('.pdf-area');
-      return { editor: editor.width, preview: preview.width, sidebar: sidebar.width, right: preview.right, pdfHeight: pdf.height, viewport: innerWidth, scroll: document.documentElement.scrollWidth };
+      const separators = [...document.querySelectorAll('.pane-separator')].reduce((total, element) => total + element.getBoundingClientRect().width, 0);
+      return { editor: editor.width, preview: preview.width, sidebar: sidebar.width, separators, right: preview.right, pdfHeight: pdf.height, viewport: innerWidth, scroll: document.documentElement.scrollWidth };
     });
     expect(sizes.scroll).toBe(viewport.width);
     expect(sizes.right).toBe(viewport.width);
-    expect(sizes.editor + sizes.preview + sizes.sidebar).toBeCloseTo(viewport.width, 0);
+    expect(sizes.editor + sizes.preview + sizes.sidebar + sizes.separators).toBeCloseTo(viewport.width, 0);
     expect(Math.abs(sizes.editor - sizes.preview)).toBeLessThan(1);
     expect(sizes.editor).toBeGreaterThan(viewport.width * .4);
     expect(sizes.pdfHeight).toBeGreaterThan(viewport.height * (viewport.width >= 1920 ? .65 : .5));
