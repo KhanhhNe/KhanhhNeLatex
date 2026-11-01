@@ -79,7 +79,7 @@ for (const [profile, options] of [
         }
         const boxes = await Promise.all([card, title, details].map(locator => locator.boundingBox()));
         const [cardBox, titleBox, detailsBox] = boxes;
-        expect(titleBox.width).toBeCloseTo(cardBox.width - 20, 0);
+        expect(titleBox.width).toBeCloseTo(cardBox.width - (mobile ? 20 : 16), 0);
         expect(titleBox.height).toBeGreaterThan(30);
         expect(detailsBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
         expect(detailsBox.x + detailsBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
