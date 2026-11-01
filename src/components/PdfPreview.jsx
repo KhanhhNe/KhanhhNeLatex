@@ -6,8 +6,12 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const maxPixels = 2_000_000;
 const maxPages = 3;
 const settleDelay = 180;
+// Momentum wheel events arrive every frame; a longer gap ends the inertial tail.
+const wheelTailGap = 80;
+const scrollIdle = 150;
 
 export default function PdfPreview({ viewer, pending, onReady, onError, viewState }) {
+  const sync = useRef(null);
   const root = useRef(null);
   const viewport = useRef(null);
   const sheet = useRef(null);
@@ -23,13 +27,16 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
     setError('');
     let disposed = false, failed = false, worker, pdfWorker, document, loading, renderTask, timer, loadTimer, frame = 0;
     let zoom = 1, paintedZoom = 1, width = 0, height = 0, fitted = true, ready = false, rendering = false;
-    let generation = 0, gesture = null, saved, restored = false;
-    const layout = [], cache = new Map(), pointers = new Map();
+    let generation = 0, gesture = null, pinch = null, saved, restored = false, revealTimer;
+    let lastWheel = -Infinity, wheelZoom = false;
+    const layout = [], cache = new Map();
+    const zooming = () => Boolean(pinch || gesture);
     const fail = reason => {
       if (disposed || failed || reason?.name === 'RenderingCancelledException') return;
       failed = true;
       clearTimeout(timer);
       clearTimeout(loadTimer);
+      clearTimeout(revealTimer);
       loading?.destroy().catch(error => console.warn('PDF preview cleanup failed.', error.name));
       pdfWorker?.destroy();
       worker?.terminate();
@@ -38,7 +45,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
     };
     const remember = () => {
       if (!handlers.current.pending && ready && scroller.clientWidth && scroller.clientHeight) viewState.current = {
-        zoom, fitted, x: scroller.scrollLeft / zoom, y: scroller.scrollTop / zoom,
+        zoom, fitted, x: scroller.scrollLeft / zoom, y: scroller.scrollTop / zoom, at: performance.now(),
       };
     };
     const paint = () => {
@@ -63,7 +70,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
         .slice(0, maxPages).map(page => page.index);
     };
     const rasterize = async () => {
-      if (disposed || failed || !document || (gesture && !gesture.pan) || pointers.size > 1 || rendering) return;
+      if (disposed || failed || !document || zooming() || rendering) return;
       rendering = true;
       const run = generation, wanted = visible();
       // Keep only viewport pages; no full-document canvas stack or per-event PDF work.
@@ -103,10 +110,8 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
           page.cleanup();
         }
         if (!ready && !disposed && run === generation && wanted.length && wanted.every(index => cache.has(index))) {
-          ready = true;
           clearTimeout(loadTimer);
-          container.dispatchEvent(new CustomEvent('load', { detail: 'pdf-rendered' }));
-          remember();
+          reveal();
         }
       } catch (reason) { fail(reason); }
       finally {
@@ -138,92 +143,99 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       });
       schedule();
     };
+    // Zoom only on real zoom gestures. Plain wheel/touch scrolling is never prevented, so the
+    // browser's native, compositor-driven momentum (iOS, macOS trackpads, precision touchpads) stays intact.
     const wheel = event => {
-      if (!event.ctrlKey || !width) return;
+      const now = event.timeStamp, tail = now - lastWheel < wheelTailGap && !wheelZoom;
+      lastWheel = now;
+      if (!(event.ctrlKey || event.metaKey) || !width) { wheelZoom = false; return; }
       event.preventDefault();
+      if (gesture || pinch) return;
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scroller.clientHeight : 1;
+      if (tail) {
+        // A modifier pressed during an inertial scroll tail must not turn momentum into zoom.
+        scroller.scrollBy(event.deltaX * unit, event.deltaY * unit);
+        return;
+      }
+      wheelZoom = true;
       const box = scroller.getBoundingClientRect();
-      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scroller.clientHeight : 1);
+      const delta = event.deltaY * unit;
       changeZoom(zoom * Math.exp(-clamp(delta, -100, 100) * .01),
         event.clientX - box.left, event.clientY - box.top);
     };
     const gestureStart = event => {
-      if (!width) return;
-      event.preventDefault();
-      if (pointers.size) return;
-      gesture = { native: true, zoom };
+      if (event.cancelable) event.preventDefault();
+      if (!width || pinch) return;
+      gesture = { zoom };
       generation++;
       renderTask?.cancel();
       clearTimeout(timer);
     };
     const gestureChange = event => {
-      if (!gesture?.native) return;
-      event.preventDefault();
+      if (event.cancelable) event.preventDefault();
+      if (!gesture || pinch) return;
       const box = scroller.getBoundingClientRect();
       changeZoom(gesture.zoom * event.scale, event.clientX - box.left, event.clientY - box.top);
     };
     const gestureEnd = event => {
-      if (!gesture?.native) return;
-      event.preventDefault();
+      if (event.cancelable) event.preventDefault();
+      if (!gesture) return;
       gesture = null;
       schedule();
     };
-    const pair = () => {
-      const [a, b] = [...pointers.values()];
-      return { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const pair = event => {
+      const [a, b] = event.touches;
+      return { distance: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)),
+        x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
     };
-    const down = event => {
-      if (event.pointerType !== 'touch' || !width) return;
-      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      scroller.setPointerCapture(event.pointerId);
-      if (pointers.size === 2) {
-        cancelAnimationFrame(frame);
-        paint();
-        const center = pair(), box = scroller.getBoundingClientRect();
-        gesture = { ...center, zoom, anchorX: (scroller.scrollLeft + center.x - box.left - sheet.current.offsetLeft) / zoom,
-          anchorY: (scroller.scrollTop + center.y - box.top - sheet.current.offsetTop) / zoom };
-        generation++;
-        renderTask?.cancel();
-        clearTimeout(timer);
-      } else if (pointers.size === 1) gesture = { pan: true, x: event.clientX, y: event.clientY };
-    };
-    const move = event => {
-      if (!pointers.has(event.pointerId)) return;
-      event.preventDefault();
-      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (pointers.size >= 2 && gesture && !gesture.pan) {
-        const center = pair();
-        zoom = clamp(gesture.zoom * center.distance / gesture.distance, .25, 4);
-        fitted = false;
-        if (!frame) frame = requestAnimationFrame(() => {
-          paint();
-          const center = pair(), box = scroller.getBoundingClientRect();
-          scroller.scrollLeft = gesture.anchorX * zoom + sheet.current.offsetLeft - (center.x - box.left);
-          scroller.scrollTop = gesture.anchorY * zoom + sheet.current.offsetTop - (center.y - box.top);
-          remember();
-        });
-      } else if (gesture?.pan) {
-        scroller.scrollLeft += gesture.x - event.clientX;
-        scroller.scrollTop += gesture.y - event.clientY;
-        gesture = { pan: true, x: event.clientX, y: event.clientY };
-        remember();
-      }
-    };
-    const up = event => {
-      if (!pointers.has(event.pointerId)) return;
+    const startPinch = event => {
       cancelAnimationFrame(frame);
       paint();
-      if (gesture && !gesture.pan && pointers.size >= 2) {
-        const center = pair(), box = scroller.getBoundingClientRect();
-        scroller.scrollLeft = gesture.anchorX * zoom + sheet.current.offsetLeft - (center.x - box.left);
-        scroller.scrollTop = gesture.anchorY * zoom + sheet.current.offsetTop - (center.y - box.top);
-      }
-      pointers.delete(event.pointerId);
-      if (scroller.hasPointerCapture(event.pointerId)) scroller.releasePointerCapture(event.pointerId);
+      const center = pair(event), box = scroller.getBoundingClientRect();
+      pinch = { ...center, zoom, anchorX: (scroller.scrollLeft + center.x - box.left - sheet.current.offsetLeft) / zoom,
+        anchorY: (scroller.scrollTop + center.y - box.top - sheet.current.offsetTop) / zoom };
       gesture = null;
-      if (pointers.size === 1) {
-        const remaining = [...pointers.values()][0];
-        gesture = { pan: true, ...remaining };
+      generation++;
+      renderTask?.cancel();
+      clearTimeout(timer);
+    };
+    const place = () => {
+      const box = scroller.getBoundingClientRect();
+      scroller.scrollLeft = pinch.anchorX * zoom + sheet.current.offsetLeft - (pinch.x - box.left);
+      scroller.scrollTop = pinch.anchorY * zoom + sheet.current.offsetTop - (pinch.y - box.top);
+    };
+    // Passive: one-finger pans and flings stay native; only a second finger starts a pinch.
+    const touchStart = event => {
+      if (event.touches.length === 2 && width && !pinch) startPinch(event);
+    };
+    // Cancels only two-finger movement. Once the browser has begun a native pan it marks
+    // touchmove uncancelable; the pinch then yields instead of fighting the scroll.
+    const touchMove = event => {
+      if (event.touches.length < 2 || !width) return;
+      if (!event.cancelable) {
+        if (pinch) { pinch = null; schedule(); }
+        return;
       }
+      event.preventDefault();
+      if (!pinch) startPinch(event);
+      const center = pair(event);
+      zoom = clamp(pinch.zoom * center.distance / pinch.distance, .25, 4);
+      pinch.x = center.x;
+      pinch.y = center.y;
+      fitted = false;
+      if (!frame) frame = requestAnimationFrame(() => {
+        paint();
+        if (pinch) place();
+        remember();
+      });
+    };
+    const touchEnd = event => {
+      if (!pinch || event.touches.length >= 2) return;
+      cancelAnimationFrame(frame);
+      paint();
+      place();
+      remember();
+      pinch = null;
       schedule();
     };
     const fit = () => {
@@ -241,7 +253,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
     };
     const scroll = () => {
       remember();
-      if (failed || disposed || (gesture && !gesture.pan) || pointers.size > 1 || timer) return;
+      if (failed || disposed || zooming() || timer) return;
       // Scroll is throttled, not debounced: newly visible pages fill during a long pan.
       timer = setTimeout(() => { timer = 0; rasterize(); }, settleDelay);
     };
@@ -251,9 +263,9 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
     scroller.addEventListener('gesturestart', gestureStart, { passive: false });
     scroller.addEventListener('gesturechange', gestureChange, { passive: false });
     scroller.addEventListener('gestureend', gestureEnd, { passive: false });
-    scroller.addEventListener('pointerdown', down);
-    scroller.addEventListener('pointermove', move, { passive: false });
-    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) scroller.addEventListener(type, up);
+    scroller.addEventListener('touchstart', touchStart, { passive: true });
+    scroller.addEventListener('touchmove', touchMove, { passive: false });
+    for (const type of ['touchend', 'touchcancel']) scroller.addEventListener(type, touchEnd, { passive: true });
     scroller.addEventListener('scroll', scroll, { passive: true });
     scroller.addEventListener('keydown', key);
     controls.current = { in: () => changeZoom(zoom * 1.2), out: () => changeZoom(zoom / 1.2), fit };
@@ -268,6 +280,36 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       restored = true;
       remember();
     };
+    // A replacement PDF adopts the shown preview's latest position, not the one from when it began loading.
+    const drifted = () => {
+      const latest = viewState.current;
+      if (!latest || !restored || !scroller.clientWidth) return false;
+      if (latest.fitted !== fitted || (!latest.fitted && Math.abs(latest.zoom - zoom) > .001)) return true;
+      return Math.abs(latest.x * zoom - scroller.scrollLeft) > 1 || Math.abs(latest.y * zoom - scroller.scrollTop) > 1;
+    };
+    const adopt = () => {
+      saved = viewState.current;
+      fitted = saved.fitted ?? true;
+      zoom = saved.zoom || zoom;
+      generation++;
+      renderTask?.cancel();
+      restore();
+    };
+    // Never swap a replacement in while the shown preview is still scrolling (including momentum):
+    // wait for scroll idle, then catch up to its final position before revealing.
+    const reveal = () => {
+      clearTimeout(revealTimer);
+      if (disposed || failed || ready) return;
+      if (handlers.current.pending) {
+        const busy = scrollIdle - (performance.now() - (viewState.current?.at ?? -Infinity));
+        if (busy > 0) { revealTimer = setTimeout(reveal, busy); return; }
+        if (drifted()) { adopt(); schedule(); return; }
+      }
+      ready = true;
+      container.dispatchEvent(new CustomEvent('load', { detail: 'pdf-rendered' }));
+      remember();
+    };
+    sync.current = () => { if (ready && !disposed && !failed && drifted()) { adopt(); schedule(); } };
     const observer = new ResizeObserver(() => {
       if (!restored) restore();
       else if (fitted) fit();
@@ -317,6 +359,8 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       generation++;
       clearTimeout(timer);
       clearTimeout(loadTimer);
+      clearTimeout(revealTimer);
+      sync.current = null;
       cancelAnimationFrame(frame);
       renderTask?.cancel();
       observer.disconnect();
@@ -325,9 +369,9 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       scroller.removeEventListener('gesturestart', gestureStart);
       scroller.removeEventListener('gesturechange', gestureChange);
       scroller.removeEventListener('gestureend', gestureEnd);
-      scroller.removeEventListener('pointerdown', down);
-      scroller.removeEventListener('pointermove', move);
-      for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) scroller.removeEventListener(type, up);
+      scroller.removeEventListener('touchstart', touchStart);
+      scroller.removeEventListener('touchmove', touchMove);
+      for (const type of ['touchend', 'touchcancel']) scroller.removeEventListener(type, touchEnd);
       scroller.removeEventListener('scroll', scroll);
       scroller.removeEventListener('keydown', key);
       for (const record of cache.values()) record.canvas.width = record.canvas.height = 0;
@@ -336,6 +380,8 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       worker?.terminate();
     };
   }, [viewer.url, attempt]);
+  // The shown preview may have scrolled during the replacement's fade-in.
+  useEffect(() => { if (!pending) sync.current?.(); }, [pending]);
   return <div ref={root} data-src={viewer.url} title={pending ? 'Loading compiled PDF' : 'Compiled PDF'}
     className={`pdf-viewer${pending ? ` pending${viewer.ready ? ' ready' : ''}` : ''}`}
     aria-hidden={pending ? true : undefined}>

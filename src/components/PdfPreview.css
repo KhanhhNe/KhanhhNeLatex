@@ -3,7 +3,7 @@
 .pdf-zoom-toolbar button,.pdf-zoom-toolbar a{min-width:44px;min-height:44px;padding:8px;font-size:.75rem}
 .pdf-zoom-toolbar a{display:inline-flex;align-items:center;white-space:nowrap}
 .pdf-zoom-toolbar output{min-width:3.5em;text-align:center;font-variant-numeric:tabular-nums}
-.pdf-viewport{position:relative;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;touch-action:none;overflow-anchor:none;background:#343a40;scrollbar-gutter:stable}
+.pdf-viewport{position:relative;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;touch-action:pan-x pan-y;overflow-anchor:none;-webkit-overflow-scrolling:touch;background:#343a40;scrollbar-gutter:stable}
 .pdf-viewport:focus-visible{outline:2px solid #b8cddd;outline-offset:-2px}
 .pdf-sheet{position:relative;min-width:0;margin:8px auto}
 .pdf-pages{position:absolute;top:0;left:0;transform-origin:0 0}
