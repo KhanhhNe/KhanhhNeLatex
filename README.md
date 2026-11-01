@@ -30,6 +30,8 @@ Mobile regressions run Chromium and WebKit with the iPhone 13 Pro profile at 390
 
 ## Writing and persistence
 
+The document title field grows with its text up to the available toolbar width on desktop, laptop and mobile. Longer titles scroll within the input without displacing the toolbar actions.
+
 On desktop, drag the subtle separators to resize the document sidebar or source/PDF split. Focus a separator and use Left/Right arrows (Shift for larger steps), Home/End for its limits, or Enter/double-click to restore its default. Escape cancels an active drag. Bounded layout preferences stay on this device, separate from document saves; resizing never compiles or saves source. Narrow screens retain the document drawer and open documents in **Read** mode with an initial compiled PDF. **Export PDF**, **Export .tex** and the viewer's **Open PDF** action are available while reading. **Edit** exposes source, title editing and Save to account; **Compile & read** returns to the preview after a successful compile. A failed or cancelled compile retains the last good PDF. Monaco does not load until Edit is first opened on mobile; after that the single editor remains mounted for that document to preserve undo and selection across mode switches. Phone landscape reserves more room for the PDF; very short keyboard-height viewports remain scrollable.
 
 - One text-only UTF-8 `.tex` file per document, maximum 100,000 characters; imports also limited to 400 KB. No image, font, binary or other source uploads.

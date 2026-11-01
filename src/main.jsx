@@ -678,11 +678,14 @@ function App() {
       <main className="main">
         <div className="document-toolbar">
           <div className="document-title"><span className="breadcrumb">Projects <span aria-hidden="true">/</span></span>
-            <input key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy} readOnly={mobile && tab === 'preview'}
-              onChange={event => update({ title: event.target.value })} onBlur={event => {
-                if (!active.current?.title.trim()) { event.target.value = 'Untitled paper'; update({ title: 'Untitled paper' }); }
-                persist().catch(() => {});
-              }} />
+            <span className="document-title-field">
+              <span className="document-title-measure" aria-hidden="true">{`${current?.title || ''} `}</span>
+              <input key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy} readOnly={mobile && tab === 'preview'}
+                onChange={event => update({ title: event.target.value })} onBlur={event => {
+                  if (!active.current?.title.trim()) { event.target.value = 'Untitled paper'; update({ title: 'Untitled paper' }); }
+                  persist().catch(() => {});
+                }} />
+            </span>
             <span className="save-state" role="status" aria-atomic="true"><i />{saveState}</span>
           </div>
           <div className="document-actions">
