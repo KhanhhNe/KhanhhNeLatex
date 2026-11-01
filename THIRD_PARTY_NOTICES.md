@@ -1,6 +1,6 @@
 # Third-party notices
 
-The UI and application code are original. No Prism/OpenAI source, logos or proprietary assets are used. React (MIT), Express (MIT), Drizzle ORM/Kit (Apache-2.0), Vite (MIT), Playwright (Apache-2.0), Wrangler (MIT/Apache-2.0) and cf (MIT/Apache-2.0) retain their licenses in their installed distributions.
+The UI and application code are original. No Prism source, logos or proprietary assets are used. React (MIT), Express (MIT), Drizzle ORM/Kit (Apache-2.0), Vite (MIT), Playwright (Apache-2.0), Wrangler (MIT/Apache-2.0) and cf (MIT/Apache-2.0) retain their licenses in their installed distributions.
 
 The source editor uses **Monaco Editor 0.57.0**, Copyright (c) 2016 - present Microsoft Corporation, under the MIT license. Each production build distributes the full [MIT license](/licenses/monaco-LICENSE.txt) and upstream [third-party notices](/licenses/monaco-ThirdPartyNotices.txt), copied unchanged from the pinned npm package. Monaco's ESM code and text-editor worker are built and hosted with this application; no editor CDN or additional language-service workers are used. The LaTeX tokenizer and application theme are original.
 

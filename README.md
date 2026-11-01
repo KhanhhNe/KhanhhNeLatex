@@ -1,8 +1,8 @@
 # KhanhhNeLatex
 
-An original, deliberately small Prism-inspired LaTeX workspace. React JavaScript frontend, Express 5 API on Cloudflare Workers' native Node HTTP adapter, Drizzle ORM and Cloudflare D1. No Prism code/assets, AI, image uploads, server compilation, or polling.
+An original, deliberately small Prism-inspired LaTeX workspace. React JavaScript frontend, Express 5 API on Cloudflare Workers' native Node HTTP adapter, Drizzle ORM and Cloudflare D1. No Prism code/assets, image uploads, server compilation, or polling.
 
-The home screen follows the publicly visible Prism Projects dashboard's high-level structure: dark project surface, narrow navigation, search, list/grid views, sortable document rows, Import and New actions. The workspace uses the blue-charcoal source surface, muted line numbers, rounded file tab and teal/yellow/purple syntax visible in [OpenAI's official Prism announcement](https://openai.com/index/introducing-prism/). Compact dark toolbars, preview surroundings, status/log/loading surfaces, navigation and dialogs form one consistent visual system, following the user's preference for dark chrome throughout. Native PDF paper and content retain their compiled colors without filters or a replacement renderer. All UI code, branding, icons and copy are original; no reference images are distributed. The signed-in live editor was inaccessible, so this is evidence-based visual alignment, not a claim of pixel-perfect parity. Unsupported AI/collaboration controls and the marketing image's overlapping panels/backdrop are deliberately omitted. Open a project to write, or use `/#workspace` to reopen the latest device draft directly. Monaco and pdfTeX begin loading only when the workspace opens, not while browsing projects.
+The home screen follows the publicly visible Prism Projects dashboard's high-level structure: dark project surface, narrow navigation, search, list/grid views, sortable document rows, Import and New actions. The workspace uses a blue-charcoal source surface, muted line numbers, a rounded file tab and teal/yellow/purple syntax. Compact dark toolbars, preview surroundings, status/log/loading surfaces, navigation and dialogs form one consistent visual system, following the user's preference for dark chrome throughout. Native PDF paper and content retain their compiled colors without filters or a replacement renderer. All UI code, branding, icons and copy are original; no reference images are distributed. The signed-in live editor was inaccessible, so this is evidence-based visual alignment, not a claim of pixel-perfect parity. Unsupported collaboration controls and the marketing image's overlapping panels/backdrop are deliberately omitted. Open a project to write, or use `/#workspace` to reopen the latest device draft directly. Monaco and pdfTeX begin loading only when the workspace opens, not while browsing projects.
 
 ## Local development
 
@@ -149,7 +149,7 @@ npm run db:local
 npm run dev:worktree
 ```
 
-`dev:worktree` selects an available localhost port, creates a per-worktree `.wrangler/worktree-state` local D1 store, and supplies `APP_ORIGIN` as a local Wrangler variable. It ignores `.env`, removes Cloudflare/OpenAI credentials from Wrangler's process environment, and does not modify `.dev.vars`. Run `npm run db:worktree` in each worktree to initialize its isolated database. No remote database or production credentials are used by local development. Use a single `dev:worktree <port>` argument to choose a port.
+`dev:worktree` selects an available localhost port, creates a per-worktree `.wrangler/worktree-state` local D1 store, and supplies `APP_ORIGIN` as a local Wrangler variable. It ignores `.env`, removes Cloudflare credentials from Wrangler's process environment, and does not modify `.dev.vars`. Run `npm run db:worktree` in each worktree to initialize its isolated database. No remote database or production credentials are used by local development. Use a single `dev:worktree <port>` argument to choose a port.
 
 ## Tests and collaboration
 
@@ -159,6 +159,6 @@ Before handing off/merging a change, review the complete diff; check missing/err
 
 ## Secrets and licensing
 
-Root `.env` is Git-ignored, plaintext, server-only and restricted to the current Windows user where available. `.env.example` contains placeholders only. Never prefix credentials with `VITE_`, put them in `public`, return/log them, or deploy `.env`. Wrangler dev loads `.env` as a server binding; production deploy workflows do not read or upload it. AI is deferred and the key is never used. Rotate/revoke any key previously shared in chat. For future AI production setup, use a Worker secret (`wrangler secret put OPENAI_API_KEY` after authenticating the appropriate CLI), not an uploaded env file.
+Root `.env` is Git-ignored, plaintext, server-only and restricted to the current Windows user where available. Never prefix credentials with `VITE_`, put them in `public`, return/log them, or deploy `.env`. Local Wrangler may load `.env` as a server binding; production deploy workflows do not read or upload it.
 
 GNU AGPL v3 only; see `LICENSE` and `THIRD_PARTY_NOTICES.md`. Each build generates an allowlisted, secret-free `/source.tar.gz` so deployed users can obtain corresponding application source. The compiler source archive and notices are linked in Help. TeX files/fonts retain their upstream licenses.

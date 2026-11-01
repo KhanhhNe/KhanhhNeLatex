@@ -9,7 +9,7 @@
     "public/compiler", "!public/compiler/xcolor-source.tar.gz", "!public/compiler/pgf-source.tar.gz", "public/_headers",
     "index.html", "vite.config.js", "playwright.config.js",
     "cloudflare.config.ts", "wrangler.config.ts", "wrangler.jsonc",
-    "drizzle.config.js", ".env.example", ".gitignore",
+    "drizzle.config.js", ".gitignore",
     "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "package-lock.json", ".gitattributes"
   ],
   "scripts": {

@@ -9,7 +9,7 @@ try {
   const result = JSON.parse(execFileSync(process.execPath, [
     process.env.npm_execpath, 'pack', '--json', '--ignore-scripts', '--pack-destination', directory,
   ], { encoding: 'utf8' }))[0];
-  if (result.files.some(({ path }) => /(^|\/)(?:\.env(?:\..*)?|\.dev\.vars(?:\..*)?)$/.test(path) && path !== '.env.example'))
+  if (result.files.some(({ path }) => /(^|\/)(?:\.env(?:\..*)?|\.dev\.vars(?:\..*)?)$/.test(path)))
     throw new Error('Refusing to publish an archive containing a secret environment file.');
   if (result.size > 25 * 1024 * 1024)
     throw new Error('The application source archive exceeds the Cloudflare 25 MiB static asset limit.');
