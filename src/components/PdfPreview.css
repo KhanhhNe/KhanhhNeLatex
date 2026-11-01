@@ -1,0 +1,13 @@
+.pdf-viewer{display:flex;flex-direction:column;overflow:hidden}
+.pdf-zoom-toolbar{display:flex;align-items:center;justify-content:center;gap:4px;flex-shrink:0;min-height:44px;padding:0 4px;background:#232a30;color:#d7e0e7;font-size:.75rem}
+.pdf-zoom-toolbar button,.pdf-zoom-toolbar a{min-width:44px;min-height:44px;padding:8px;font-size:.75rem}
+.pdf-zoom-toolbar a{display:inline-flex;align-items:center;white-space:nowrap}
+.pdf-zoom-toolbar output{min-width:3.5em;text-align:center;font-variant-numeric:tabular-nums}
+.pdf-viewport{position:relative;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;touch-action:none;overflow-anchor:none;background:#343a40;scrollbar-gutter:stable}
+.pdf-viewport:focus-visible{outline:2px solid #b8cddd;outline-offset:-2px}
+.pdf-sheet{position:relative;min-width:0;margin:8px auto}
+.pdf-pages{position:absolute;top:0;left:0;transform-origin:0 0}
+.pdf-page{position:absolute;left:0;background:#fff;color-scheme:light;box-shadow:0 1px 3px #0003}
+.pdf-page canvas{display:block;width:100%;height:100%}
+.pdf-render-error{margin:0;padding:8px;background:#3e2725;color:#ffccc5;font-size:.75rem}
+@media(max-width:450px){.pdf-zoom-toolbar{gap:0}.pdf-zoom-toolbar button,.pdf-zoom-toolbar a{padding:6px}}

@@ -55,7 +55,7 @@ test('actual PDF survives cheap desktop dragging, keyboard limits, reset and per
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
   expect((await readFile(await (await download).path())).subarray(0, 5).toString()).toBe('%PDF-');
-  const originalUrl = await viewer.getAttribute('src');
+  const originalUrl = await viewer.getAttribute('data-src');
   await viewer.evaluate(element => { window.originalResizeViewer = element; });
   await evidence(page, 'resize-1920-before');
   const audit = await page.evaluate(() => ({ ...window.resizeAudit }));
@@ -69,7 +69,7 @@ test('actual PDF survives cheap desktop dragging, keyboard limits, reset and per
   await aligned(page);
   await evidence(page, 'resize-1920-after');
   expect(await viewer.evaluate(element => element === window.originalResizeViewer)).toBe(true);
-  expect(await viewer.getAttribute('src')).toBe(originalUrl);
+  expect(await viewer.getAttribute('data-src')).toBe(originalUrl);
   expect(await viewer.evaluate(element => getComputedStyle(element).filter)).toBe('none');
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('workspace-layout-v1')));
   await sidebar(page).focus();
@@ -99,7 +99,7 @@ test('actual PDF survives cheap desktop dragging, keyboard limits, reset and per
   const geometry = await page.locator('.pdf-area').boundingBox();
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.resizeAudit.workers)).toBe(audit.workers + 1);
-  expect(await viewer.getAttribute('src')).toBe(originalUrl);
+  expect(await viewer.getAttribute('data-src')).toBe(originalUrl);
   expect(await page.locator('.pdf-area').boundingBox()).toEqual(geometry);
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });
   await expect(page.locator('.pdf-viewer.pending')).toHaveCount(0);

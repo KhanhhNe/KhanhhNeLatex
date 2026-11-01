@@ -39,9 +39,12 @@ async function fakeEngine(page) {
     window.maxConcurrentEngines = 0;
     const observed = new WeakSet();
     new MutationObserver(() => {
-      for (const frame of document.querySelectorAll('iframe')) {
+      for (const frame of document.querySelectorAll('.pdf-viewer')) {
         if (observed.has(frame)) continue;
         observed.add(frame);
+        frame.addEventListener('load', event => {
+          if (window.holdViewer && event.detail === 'pdf-rendered') event.stopImmediatePropagation();
+        }, { capture: true });
         if (!window.holdViewer) setTimeout(() => frame.dispatchEvent(new Event('load')), 0);
       }
     }).observe(document, { childList: true, subtree: true });
@@ -61,7 +64,25 @@ async function fakeEngine(page) {
           if (!this.passes++) window.engineJobs.push({ source: this.source });
           setTimeout(() => this.onmessage?.({ data: {
             cmd: 'compile', result: window.engineFail ? 'error' : 'ok', log: this.source,
-            pdf: new TextEncoder().encode(`%PDF-1.4\n${this.source}\n%%EOF`),
+            pdf: (() => {
+              let body = `%PDF-1.4\n% ${this.source.replace(/\n/g, '\n% ')}\n`;
+              const positions = [0];
+              const stream = 'BT /F1 12 Tf 30 750 Td (Preview test fixture) Tj ET';
+              const objects = [
+                '<< /Type /Catalog /Pages 2 0 R >>',
+                '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+                '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+                '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+                `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+              ];
+              objects.forEach((object, index) => {
+                positions.push(new TextEncoder().encode(body).length);
+                body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+              });
+              const start = new TextEncoder().encode(body).length;
+              body += `xref\n0 6\n0000000000 65535 f \n${positions.slice(1).map(position => `${String(position).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;
+              return new TextEncoder().encode(body);
+            })(),
           } }), window.engineDelay);
         }
       }
@@ -252,16 +273,16 @@ test('PDF handoff retains the old viewer until replacement loads, cancels stale 
   });
   await page.goto('/#workspace');
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
-  const active = page.locator('iframe[title="Compiled PDF"]');
-  const original = await active.getAttribute('src');
+  const active = page.locator('.pdf-viewer[title="Compiled PDF"]');
+  const original = await active.getAttribute('data-src');
   const originalNode = await active.elementHandle();
   await page.evaluate(() => { window.holdViewer = true; });
   await fillSource(page, 'first replacement');
   await sourceEditor(page).press('Control+Enter');
-  const pending = page.locator('iframe[title="Loading compiled PDF"]');
+  const pending = page.locator('.pdf-viewer[title="Loading compiled PDF"]');
   await expect(pending).toHaveCount(1);
-  const discarded = await pending.getAttribute('src');
-  await expect(active).toHaveAttribute('src', original);
+  const discarded = await pending.getAttribute('data-src');
+  await expect(active).toHaveAttribute('data-src', original);
   expect(await originalNode.evaluate(node => node.isConnected)).toBe(true);
   expect(await page.evaluate(url => window.revokedUrls.includes(url.split('#')[0]), original)).toBe(false);
   const exported = page.waitForEvent('download');
@@ -269,36 +290,36 @@ test('PDF handoff retains the old viewer until replacement loads, cancels stale 
   expect(await readFile(await (await exported).path(), 'utf8')).toContain('first replacement');
   await fillSource(page, 'latest replacement');
   await sourceEditor(page).press('Control+Enter');
-  await expect(pending).not.toHaveAttribute('src', discarded);
-  await expect(page.locator('iframe')).toHaveCount(2);
+  await expect(pending).not.toHaveAttribute('data-src', discarded);
+  await expect(page.locator('.pdf-viewer')).toHaveCount(2);
   expect(await page.evaluate(url => window.revokedUrls.includes(url.split('#')[0]), discarded)).toBe(true);
-  await expect(active).toHaveAttribute('src', original);
-  const latest = await pending.getAttribute('src');
+  await expect(active).toHaveAttribute('data-src', original);
+  const latest = await pending.getAttribute('data-src');
   const stagedNode = await pending.elementHandle();
   await page.emulateMedia({ reducedMotion: 'reduce' });
   expect(await pending.evaluate(frame => getComputedStyle(frame).transitionDuration)).toBe('0s');
   await pending.dispatchEvent('load');
-  await expect(active).toHaveAttribute('src', latest);
+  await expect(active).toHaveAttribute('data-src', latest);
   await expect(pending).toHaveCount(0);
-  expect(await stagedNode.evaluate(node => node === document.querySelector('iframe[title="Compiled PDF"]'))).toBe(true);
+  expect(await stagedNode.evaluate(node => node === document.querySelector('.pdf-viewer[title="Compiled PDF"]'))).toBe(true);
   expect(await page.evaluate(url => window.revokedUrls.includes(url.split('#')[0]), original)).toBe(true);
   const count = await page.evaluate(() => window.engineJobs.length);
   await sourceEditor(page).press('Control+Enter');
   await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(count + 1);
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
-  await expect(page.locator('iframe')).toHaveCount(1);
+  await expect(page.locator('.pdf-viewer')).toHaveCount(1);
   expect(await stagedNode.evaluate(node => node.isConnected)).toBe(true);
   await page.evaluate(() => { window.engineFail = true; });
   await fillSource(page, 'invalid source');
   await sourceEditor(page).press('Control+Enter');
   await expect(page.locator('.preview-status')).toContainText('LaTeX could not compile');
-  await expect(active).toHaveAttribute('src', latest);
+  await expect(active).toHaveAttribute('data-src', latest);
   await expect(page.locator('.preview-status')).toContainText('out of date');
   expect(await page.evaluate(url => window.revokedUrls.includes(url.split('#')[0]), latest)).toBe(false);
   await page.evaluate(() => { window.engineFail = false; window.engineDelay = 400; });
   await sourceEditor(page).press('Control+Enter');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(active).toHaveAttribute('src', latest);
+  await expect(active).toHaveAttribute('data-src', latest);
   await page.getByRole('button', { name: 'New document' }).click();
   await expect(active).toHaveCount(0);
 });
@@ -330,7 +351,7 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 76
     await page.getByRole('button', { name: 'Compile', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
     await assertStable();
-    const pending = page.locator('iframe[title="Loading compiled PDF"]');
+    const pending = page.locator('.pdf-viewer[title="Loading compiled PDF"]');
     await expect(pending).toHaveCount(1);
     await assertStable();
     await pending.dispatchEvent('load');
@@ -454,7 +475,7 @@ test('editor chrome, source and dialogs use one restrained visual system', async
   await expect(page.locator('.preview-status')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
   await expect(page.locator('.compile-log')).toHaveCSS('background-color', 'rgb(35, 42, 48)');
   await expect(page.locator('.preview-footer')).toHaveCSS('background-color', 'rgb(35, 42, 48)');
-  const pdf = page.locator('iframe[title="Compiled PDF"]');
+  const pdf = page.locator('.pdf-viewer[title="Compiled PDF"]');
   await expect(pdf).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(pdf).toHaveCSS('color-scheme', 'light');
   await expect(pdf).toHaveCSS('filter', 'none');

@@ -8,7 +8,7 @@
   .pane-separator:hover::after,.pane-separator:focus-visible::after{background:#b3c9d8}
   .pane-separator:focus-visible{outline:2px solid #b8cddd}
   .pane-dragging,.pane-dragging *{cursor:col-resize!important;user-select:none!important}
-  .pane-dragging iframe,.pane-dragging .latex-editor{pointer-events:none}
+  .pane-dragging .pdf-viewer,.pane-dragging .latex-editor{pointer-events:none}
   .workspace .preview-panel{container-type:inline-size}
 }
 @container(max-width:430px){.preview-title{display:none}}
