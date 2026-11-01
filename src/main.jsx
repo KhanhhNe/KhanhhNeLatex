@@ -814,17 +814,28 @@ function App() {
       <aside id="document-sidebar" className={`sidebar ${sidebar ? 'open' : ''}`}>
         <div className="sidebar-heading"><span>Documents</span><Icon name="panel" /></div>
         <button className="new-document" onClick={() => newDocument()} disabled={busy}><Icon name="plus" /><span>New document</span></button>
-        <nav className="document-list" aria-label="Documents">{unifiedDocuments.map(document =>
-          <div className="document-row" key={document.key}>
+        <nav className="document-list" aria-label="Documents">{unifiedDocuments.map(document => {
+          const edited = new Date(document.updated_at);
+          const hasEditedDate = Number.isFinite(edited.getTime());
+          return <div className={`document-row ${document.localAvailable && current?.id === document.id ? 'selected' : ''}`} key={document.key}>
             <button className={`document-item ${document.localAvailable && current?.id === document.id ? 'selected' : ''}`}
+              aria-label={document.title} title={document.title}
+              aria-pressed={Boolean(document.localAvailable && current?.id === document.id)}
               onClick={() => openDocument(document)} disabled={busy}>
-              <Icon name="file" className="file-icon" /><span className="document-name">{document.title}
-                <small><DocumentAvailability localAvailable={document.localAvailable} cloudAvailable={document.cloudAvailable} /></small></span>
+              <span className="document-name">{document.title}</span>
             </button>
-            {document.localAvailable && document.cloudAvailable && <button className="document-cloud-open"
-              aria-label={`Open account version of ${document.title}`} title="Open account version" disabled={busy}
-              onClick={() => openCloud(document.cloudItem)}><Icon name="cloud" /></button>}
-          </div>)}</nav>
+            <div className="document-details">
+              <DocumentAvailability localAvailable={document.localAvailable} cloudAvailable={document.cloudAvailable} />
+              <time dateTime={hasEditedDate ? edited.toISOString() : undefined}
+                title={hasEditedDate ? `Last edited ${edited.toLocaleString()}` : 'Last edited time unavailable'}>
+                {hasEditedDate ? edited.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Date unavailable'}
+              </time>
+              {document.localAvailable && document.cloudAvailable && <button className="document-cloud-open"
+                aria-label={`Open account version of ${document.title}`} title="Open account version" disabled={busy}
+                onClick={() => openCloud(document.cloudItem)}><Icon name="cloud" /></button>}
+            </div>
+          </div>;
+        })}</nav>
         <div className="sidebar-bottom">
           <button className="import-button" onClick={() => fileInput.current.click()} disabled={busy}><Icon name="upload" /><span>Import .tex file</span></button>
           <button className="delete-button" onClick={remove} disabled={!current || busy}>Delete current document</button>

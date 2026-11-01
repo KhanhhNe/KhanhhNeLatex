@@ -29,17 +29,24 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
 .new-document{justify-content:flex-start;width:100%;padding:8px 10px;color:#e4e4e4;border:1px solid #3b3b3b;background:#242424}
 .new-document span{font-size:.8125rem}
 .document-list{min-height:0;overflow:auto}
-.document-row{display:flex;align-items:center;gap:2px}
-.document-item{display:flex;justify-content:flex-start;width:100%;text-align:left;gap:10px;padding:10px;border-radius:7px;margin-bottom:3px}
-.document-row .document-item{min-width:0;flex:1}
-.document-cloud-open{display:grid;place-items:center;width:44px;min-width:44px;min-height:44px;margin-bottom:3px;border-radius:7px;color:#a8d1c1}
+.document-row{position:relative;isolation:isolate;margin:3px 0;border-radius:7px}
+.document-row.selected{background:#303030;color:#fff}
+.document-row:has(.document-item:hover:not(:disabled)){background:#ffffff0d}
+.document-row.selected:has(.document-item:hover:not(:disabled)){background:#383838}
+.document-item{display:block;width:100%;min-width:0;text-align:left;padding:10px 10px 0;border-radius:7px}
+.document-item:hover:not(:disabled){background:none}
+/* Extend selection across the card without nesting the account button. */
+.document-item::after{content:"";position:absolute;inset:0;z-index:1;border-radius:inherit}
+.document-item:focus-visible{outline:none}
+.document-item:focus-visible::after{outline:2px solid #b8cddd;outline-offset:-2px}
+.document-details{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 6px 0 10px;color:#b0b0b0;font-size:.6875rem}
+.document-details .document-availability{gap:4px}
+.document-details .document-availability .ui-icon{width:13px;height:13px}
+.document-cloud-open{position:relative;z-index:2;display:grid;place-items:center;width:44px;min-width:44px;min-height:44px;padding:0;margin-left:auto;border-radius:7px;color:#a8d1c1}
+.document-cloud-open::before{content:"";position:absolute;width:28px;height:28px;border:1px solid #53665e;border-radius:6px;background:#a8d1c10a;z-index:-1}
 .document-cloud-open .ui-icon{width:16px;height:16px}
-.document-item.selected{background:#303030;color:#fff}
 .file-icon{width:17px;height:20px;color:#b8c3cb}
-.document-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8125rem;font-weight:450}
-.document-name small{display:block;color:#b0b0b0;font-size:.6875rem;font-weight:400;margin-top:3px}
-.document-name .document-availability{gap:4px}
-.document-name .document-availability .ui-icon{width:13px;height:13px}
+.document-name{display:block;min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:.8125rem;font-weight:450}
 .sidebar-note{font-size:.8125rem;line-height:1.6;color:#b4b4b4;padding:0 10px}
 .sidebar-bottom{margin-top:auto;padding-top:20px}
 .import-button{justify-content:flex-start;width:100%;padding:8px 10px;color:#c9c9c9;font-size:.8125rem}
