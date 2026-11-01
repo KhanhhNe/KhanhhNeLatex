@@ -26,43 +26,51 @@ class FakeWorker {
   terminate() { this.terminated = true; }
   send(data) { this.onmessage({ data }); }
 }
-test('compiler supersedes jobs, runs two passes and releases worker', async () => {
-  const firstWorker = new FakeWorker();
+test('compiler supersedes jobs, runs two passes and keeps one warm engine', async () => {
   const worker = new FakeWorker();
-  const workers = [firstWorker, worker];
-  const compiler = new LatexCompiler({ workerFactory: () => workers.shift() });
+  const compiler = new LatexCompiler({ workerFactory: () => worker });
   const result = compiler.compile('source');
   const cancelled = assert.rejects(result, /cancelled/);
   const second = compiler.compile('second');
   await cancelled;
-  assert.equal(firstWorker.terminated, true);
+  assert.equal(worker.terminated, false);
   worker.send({ result: 'ok' });
-  assert.deepEqual(worker.messages.map(message => message.cmd), ['writefile', 'setmainfile', 'compilelatex']);
+  await new Promise(resolve => setTimeout(resolve));
+  assert.deepEqual(worker.messages.map(message => message.cmd), ['flushcache', 'writefile', 'setmainfile', 'compilelatex']);
+  assert.equal(worker.messages[1].src, 'second');
   worker.send({ result: 'ok', cmd: 'compile', pdf: new ArrayBuffer(8), log: 'pass1' });
   assert.equal(worker.messages.at(-1).cmd, 'compilelatex');
   worker.send({ result: 'ok', cmd: 'compile', pdf: new ArrayBuffer(16), log: 'pass2' });
   assert.equal((await second).pdf.byteLength, 16);
-  assert.equal(worker.terminated, true);
+  assert.equal(worker.terminated, false);
   assert.equal(compiler.active, null);
+  compiler.dispose();
+  assert.equal(worker.terminated, true);
 });
-test('compiler cancellation and timeout terminate the worker and permit retry', async () => {
-  let worker = new FakeWorker();
-  const compiler = new LatexCompiler({ workerFactory: () => worker, timeout: 10 });
+test('compiler cancellation keeps the engine; a runaway timeout terminates it and permits retry', async () => {
+  const workers = [];
+  const compiler = new LatexCompiler({ workerFactory: () => { const worker = new FakeWorker(); workers.push(worker); return worker; }, timeout: 10 });
   const result = compiler.compile('loop');
   compiler.cancel();
   await assert.rejects(result, /cancelled/);
-  assert.equal(worker.terminated, true);
-  worker = new FakeWorker();
+  assert.equal(workers[0].terminated, false);
   const timeout = compiler.compile('loop');
-  worker.send({ result: 'ok' });
+  workers[0].send({ result: 'ok' });
   await assert.rejects(timeout, /timed out/);
-  assert.equal(worker.terminated, true);
+  assert.equal(workers[0].terminated, true);
+  assert.equal(workers.length, 2);
+  compiler.dispose();
+  assert.equal(workers[1].terminated, true);
 });
-test('compiler errors expose bounded logs and always release memory', async () => {
+test('compiler errors expose bounded logs and dispose releases memory', async () => {
   const worker = new FakeWorker();
   const compiler = new LatexCompiler({ workerFactory: () => worker });
   const result = compiler.compile('invalid');
+  worker.send({ result: 'ok' });
+  await new Promise(resolve => setTimeout(resolve));
   worker.send({ cmd: 'compile', result: 'failed', log: 'x'.repeat(30000) });
   await assert.rejects(result, error => error.log.length === 24000);
+  assert.equal(worker.terminated, false);
+  compiler.dispose();
   assert.equal(worker.terminated, true);
 });

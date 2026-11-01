@@ -95,7 +95,7 @@ test('real worker compiles the bundled T1 resume package subset', async ({ page 
   expect(result.log).not.toContain('Emergency stop');
 });
 
-test('real workers compile PDF, recompile, cancel and recover from LaTeX failure', async ({ page }) => {
+test('one real worker compiles PDFs, recompiles, cancels and recovers from LaTeX failure', async ({ page }) => {
   const externalRequests = [];
   page.on('request', request => {
     if (request.url().startsWith('http') && new URL(request.url()).origin !== new URL(test.info().project.use.baseURL).origin)
@@ -126,6 +126,8 @@ test('real workers compile PDF, recompile, cancel and recover from LaTeX failure
     await compile(source);
     const failure = await compiler.compile(String.raw`\documentclass{article}\begin{document}\notacommand\end{document}`)
       .then(() => null, error => ({ message: error.message, log: error.log }));
+    await compile(String.raw`\documentclass{article}\begin{document}Other document without references.\end{document}`);
+    const workersBeforeRunaway = workers.map(worker => ({ ...worker }));
     let cancelAt;
     const cancelled = compiler.compile(String.raw`\documentclass{article}\begin{document}\loop\iftrue\repeat\end{document}`, status => {
       if (status === 'Typesetting locally...') setTimeout(() => { cancelAt = performance.now(); compiler.cancel(); }, 25);
@@ -133,30 +135,57 @@ test('real workers compile PDF, recompile, cancel and recover from LaTeX failure
     const cancellation = await cancelled;
     const cancelLatency = performance.now() - cancelAt;
     await compile(source);
-    return { pdfs, warmup, failure, cancellation, cancelLatency, workers, statuses, active: compiler.active };
+    const workersAfterRunaway = workers.map(worker => ({ ...worker }));
+    compiler.dispose();
+    return { pdfs, warmup, failure, cancellation, cancelLatency, workersBeforeRunaway, workersAfterRunaway, workers, statuses, active: compiler.active };
   }, source);
-  expect(result.pdfs).toHaveLength(3);
+  expect(result.pdfs).toHaveLength(4);
   for (const pdf of result.pdfs) {
     expect(pdf.magic).toBe('%PDF-');
-    expect(pdf.length).toBeGreaterThan(5000);
+    expect(pdf.length).toBeGreaterThan(1000);
     expect(pdf.log).not.toContain('undefined references');
     expect(pdf.timings.compilationMs).toBeGreaterThan(0);
     expect(pdf.timings.totalMs).toBeGreaterThanOrEqual(pdf.timings.compilationMs);
     expect(pdf.timings.initializationMs).toBeGreaterThanOrEqual(0);
   }
   expect(result.warmup.initializationMs).toBeGreaterThan(0);
-  expect(result.pdfs[0].timings.initializationMs).toBe(0);
+  for (const pdf of result.pdfs.slice(0, 3)) expect(pdf.timings.initializationMs).toBe(0);
+  expect(result.pdfs[3].timings.compilationMs).toBeGreaterThan(0);
   expect(result.failure.message).toContain('LaTeX could not compile');
   expect(result.failure.log).toContain('Undefined control sequence');
   expect(result.cancellation).toBe('Compilation cancelled.');
   expect(result.cancelLatency).toBeLessThan(2000);
-  expect(result.workers).toEqual(Array.from({ length: 5 }, () => ({ terminated: 1 })));
-  expect(result.statuses.filter(status => status === 'Resolving references...')).toHaveLength(3);
+  // Normal compiles, LaTeX errors and another document all reuse the first engine.
+  expect(result.workersBeforeRunaway).toEqual([{ terminated: 0 }]);
+  // Only a cancelled runaway loop that never returns is replaced, in the background.
+  expect(result.workersAfterRunaway).toEqual([{ terminated: 1 }, { terminated: 0 }]);
+  expect(result.workers).toEqual([{ terminated: 1 }, { terminated: 1 }]);
+  expect(result.statuses.filter(status => status === 'Resolving references...')).toHaveLength(4);
   expect(result.active).toBeNull();
   expect(externalRequests).toEqual([]);
 });
 
-test('new requests terminate prior workers before starting and stale callbacks cannot clear the latest job', async ({ page }) => {
+test('real engine isolates documents: aux, written files and the shared package cache never reach the next', async ({ page }) => {
+  await loadCompiler(page);
+  const result = await page.evaluate(async () => {
+    const compiler = new window.LatexCompiler({ workerFactory: () => new Worker('/compiler/worker.js') });
+    const first = await compiler.compile(String.raw`\documentclass{article}\begin{document}\section{Alpha}\label{shared}See \ref{shared}.\newwrite\f\immediate\openout\f=leak.tex\immediate\write\f{LEAKED}\immediate\closeout\f\end{document}`);
+    const poison = await compiler.compile(String.raw`\documentclass{article}\begin{document}x\newwrite\g\immediate\openout\g=/tex/article.cls\immediate\write\g{\noexpand\errmessage{POISONED}}\immediate\closeout\g\newwrite\h\immediate\openout\h=/tmp/leak.tex\immediate\write\h{LEAKED}\immediate\closeout\h\end{document}`)
+      .then(() => 'compiled', error => error.log);
+    const second = await compiler.compile(String.raw`\documentclass{article}\begin{document}Ref: \ref{shared}. \IfFileExists{leak.tex}{\typeout{FOUND-LEAK}}{\typeout{NO-LEAK}}\IfFileExists{/tmp/leak.tex}{\typeout{FOUND-TMP}}{\typeout{NO-TMP}}\end{document}`);
+    compiler.dispose();
+    return { first: first.log, poison, second: second.log, magic: new TextDecoder().decode(new Uint8Array(second.pdf).slice(0, 5)) };
+  });
+  expect(result.first).not.toContain('undefined references');
+  expect(result.poison).not.toContain('POISONED');
+  expect(result.magic).toBe('%PDF-');
+  expect(result.second).toContain('undefined references');
+  expect(result.second).not.toContain('POISONED');
+  expect(result.second).toContain('NO-LEAK');
+  expect(result.second).toContain('NO-TMP');
+});
+
+test('superseded requests share one worker, never overlap, and stale results cannot reach the latest job', async ({ page }) => {
   await loadCompiler(page);
   const result = await page.evaluate(async () => {
     class WorkerStub {
@@ -166,55 +195,60 @@ test('new requests terminate prior workers before starting and stale callbacks c
       terminate() { this.terminated++; }
     }
     const workers = [];
-    const compiler = new window.LatexCompiler({ workerFactory: () => {
-      if (workers.some(worker => !worker.terminated)) throw new Error('Concurrent workers.');
+    const compiler = new window.LatexCompiler({ drainTimeout: 60000, workerFactory: () => {
       const worker = new WorkerStub();
       workers.push(worker);
       return worker;
     } });
+    const worker = () => workers[0];
+    const reply = data => worker().onmessage({ data });
     const first = compiler.compile('first').catch(error => error.message);
-    const oldMessage = workers[0].onmessage;
-    const oldError = workers[0].onerror;
-    const oldCancel = compiler.active.cancel;
     const second = compiler.compile('second').catch(error => error.message);
-    const third = compiler.compile('third');
-    const retry = compiler.active;
-    oldMessage({ data: { cmd: 'missing', name: 'stale' } });
-    oldMessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) } });
-    oldError({ message: 'stale error' });
-    oldCancel();
-    const retryStillActive = compiler.active === retry;
-    const worker = workers[2];
-    worker.onmessage({ data: { result: 'ok' } });
-    worker.onmessage({ data: { result: 'ok' } });
-    worker.onmessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) } });
-    worker.onmessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(16) } });
+    const third = compiler.compile('third').catch(error => error.message);
+    const postsBeforeReady = worker().messages.length;
+    reply({ result: 'ok' });
+    await compiler.warmup();
+    const startedThird = worker().messages.slice();
+    const fourth = compiler.compile('fourth');
+    const fourth_ = compiler.active;
+    const postsWhileDraining = worker().messages.length;
+    reply({ cmd: 'compile', result: 'ok', status: 0, pdf: new ArrayBuffer(3) });
+    const fourthStillActive = compiler.active === fourth_;
+    const startedFourth = worker().messages.slice(postsWhileDraining);
+    reply({ cmd: 'compile', result: 'ok', status: 0, pdf: new ArrayBuffer(8) });
+    reply({ cmd: 'compile', result: 'ok', status: 0, pdf: new ArrayBuffer(16) });
+    const done = await fourth;
+    const statuses = [await first, await second, await third];
+    compiler.dispose();
     return {
-      first: await first, second: await second, retryStillActive, bytes: (await third).pdf.byteLength,
-      workers: workers.map(worker => ({ terminated: worker.terminated, messages: worker.messages, detached: !worker.onmessage && !worker.onerror && !worker.onmessageerror })),
-      active: compiler.active,
+      statuses, postsBeforeReady, startedThird, postsWhileDraining, fourthStillActive, startedFourth, bytes: done.pdf.byteLength,
+      workers: workers.length, terminated: workers[0].terminated, active: compiler.active,
     };
   });
-  expect(result.first).toContain('cancelled');
-  expect(result.second).toContain('cancelled');
-  expect(result.retryStillActive).toBe(true);
-  expect(result.bytes).toBe(16);
-  expect(result.workers).toEqual([
-    { terminated: 1, messages: [], detached: true },
-    { terminated: 1, messages: [], detached: true },
-    { terminated: 1, messages: [
-      { cmd: 'writefile', url: 'main.tex', src: 'third' }, { cmd: 'setmainfile', url: 'main.tex' },
-      { cmd: 'compilelatex' }, { cmd: 'compilelatex' },
-    ], detached: true },
+  expect(result.statuses).toEqual(['Compilation cancelled.', 'Compilation cancelled.', 'Compilation cancelled.']);
+  expect(result.postsBeforeReady).toBe(0);
+  expect(result.startedThird).toEqual([
+    { cmd: 'flushcache' }, { cmd: 'writefile', url: 'main.tex', src: 'third' }, { cmd: 'setmainfile', url: 'main.tex' }, { cmd: 'compilelatex' },
   ]);
+  // The fourth document waits for the superseded run to return instead of overlapping with it.
+  expect(result.postsWhileDraining).toBe(4);
+  expect(result.fourthStillActive).toBe(true);
+  expect(result.startedFourth).toEqual([
+    { cmd: 'flushcache' }, { cmd: 'writefile', url: 'main.tex', src: 'fourth' }, { cmd: 'setmainfile', url: 'main.tex' }, { cmd: 'compilelatex' },
+  ]);
+  expect(result.bytes).toBe(16);
+  expect(result.workers).toBe(1);
+  expect(result.terminated).toBe(1);
   expect(result.active).toBeNull();
 });
 
-test('a timed-out real worker is released and a fresh worker can compile', async ({ page }) => {
+test('a timed-out real worker is replaced in the background and the next document compiles', async ({ page }) => {
   await loadCompiler(page);
   const result = await page.evaluate(async source => {
+    let created = 0;
     let terminated = 0;
     const compiler = new window.LatexCompiler({ timeout: 2000, workerFactory: () => {
+      created++;
       const worker = new Worker('/compiler/worker.js');
       const terminate = worker.terminate.bind(worker);
       worker.terminate = () => { terminated++; terminate(); };
@@ -223,18 +257,22 @@ test('a timed-out real worker is released and a fresh worker can compile', async
     const failure = await compiler.compile(String.raw`\documentclass{article}\begin{document}\loop\iftrue\repeat\end{document}`)
       .then(() => null, error => error.message);
     const idleAfterTimeout = compiler.active === null;
+    const replacedImmediately = created === 2 && terminated === 1;
     compiler.timeout = 60000;
     const pdf = await compiler.compile(source);
-    return { failure, idleAfterTimeout, terminated, magic: new TextDecoder().decode(new Uint8Array(pdf.pdf).slice(0, 5)), active: compiler.active };
+    const counts = { created, terminated };
+    compiler.dispose();
+    return { failure, idleAfterTimeout, replacedImmediately, counts, magic: new TextDecoder().decode(new Uint8Array(pdf.pdf).slice(0, 5)), active: compiler.active };
   }, source);
   expect(result.failure).toContain('timed out after 2 seconds');
   expect(result.idleAfterTimeout).toBe(true);
-  expect(result.terminated).toBe(2);
+  expect(result.replacedImmediately).toBe(true);
+  expect(result.counts).toEqual({ created: 2, terminated: 1 });
   expect(result.magic).toBe('%PDF-');
   expect(result.active).toBeNull();
 });
 
-test('warmup shares initialization, transfers a pending worker, and cancellation permits a fresh request', async ({ page }) => {
+test('warmup is shared with compiles, cancellation keeps the warm worker, and dispose releases it', async ({ page }) => {
   await loadCompiler(page);
   const result = await page.evaluate(async () => {
     const workers = [];
@@ -244,56 +282,45 @@ test('warmup shares initialization, transfers a pending worker, and cancellation
       workers.push(worker);
       return worker;
     } });
+    const reply = data => workers[0].onmessage({ data });
     const warmup = compiler.warmup();
     const shared = compiler.warmup() === warmup;
-    const cancelledWarmup = warmup.catch(error => error.message);
     const first = compiler.compile('old').catch(error => error.message);
-    const lateReady = workers[0].onmessage;
-    const second = compiler.compile('new');
-    const readyDuringCompile = compiler.warmup();
-    const sharedDuringCompile = compiler.warmup() === readyDuringCompile;
-    lateReady({ data: { result: 'ok' } });
-    workers[1].onmessage({ data: { result: 'ok' } });
-    const ready = await readyDuringCompile;
-    workers[1].onmessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) } });
-    workers[1].onmessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) } });
-    const completed = await second;
-    const nextWarmup = compiler.warmup();
-    workers[2].onmessage({ data: { result: 'ok' } });
-    const warmed = await nextWarmup;
-    const sameWarmup = compiler.warmup() === nextWarmup;
-    const third = compiler.compile('identical');
-    workers[2].onmessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) } });
-    workers[2].onmessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) } });
-    const reused = await third;
-    const cancelledBeforeClaim = compiler.warmup().catch(error => error.message);
     compiler.cancel();
+    const second = compiler.compile('new');
+    reply({ result: 'ok' });
+    const ready = await warmup;
+    reply({ cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) });
+    reply({ cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) });
+    const completed = await second;
+    const warmed = await compiler.warmup();
+    const third = compiler.compile('identical');
+    reply({ cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) });
+    reply({ cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(8) });
+    const reused = await third;
+    compiler.cancel();
+    const aliveAfterCancel = workers[0].terminated === 0 && compiler.engine?.ready;
+    compiler.dispose();
     return {
-      shared, sameWarmup, sharedDuringCompile, first: await first, cancelledWarmup: await cancelledWarmup,
-      cancelledBeforeClaim: await cancelledBeforeClaim,
-      ready, warmed, timings: completed.timings, reused: reused.timings,
-      workers: workers.map(worker => ({ terminated: worker.terminated, source: worker.messages.find(message => message.cmd === 'writefile')?.src })),
-      idle: compiler.active === null && compiler.warming === null,
+      shared, first: await first, ready, warmed, timings: completed.timings, reused: reused.timings, aliveAfterCancel,
+      sources: workers[0].messages.filter(message => message.cmd === 'writefile').map(message => message.src),
+      workers: workers.map(worker => worker.terminated),
+      idle: compiler.active === null && compiler.engine === null,
     };
   });
   expect(result.shared).toBe(true);
-  expect(result.sameWarmup).toBe(true);
-  expect(result.sharedDuringCompile).toBe(true);
   expect(result.first).toContain('cancelled');
-  expect(result.cancelledWarmup).toContain('cancelled');
-  expect(result.cancelledBeforeClaim).toContain('cancelled');
   expect(result.ready.initializationMs).toBeGreaterThanOrEqual(0);
   expect(result.warmed.initializationMs).toBeGreaterThanOrEqual(0);
   expect(result.timings.initializationMs).toBeGreaterThanOrEqual(0);
   expect(result.reused.initializationMs).toBe(0);
-  expect(result.workers).toEqual([
-    { terminated: 1, source: undefined }, { terminated: 1, source: 'new' },
-    { terminated: 1, source: 'identical' }, { terminated: 1, source: undefined },
-  ]);
+  expect(result.aliveAfterCancel).toBe(true);
+  expect(result.sources).toEqual(['new', 'identical']);
+  expect(result.workers).toEqual([1]);
   expect(result.idle).toBe(true);
 });
 
-test('unused warmup expires and warmup load failures recover without retaining workers', async ({ page }) => {
+test('engine load timeouts and failures recover without retaining workers, and a loaded engine stays warm', async ({ page }) => {
   await loadCompiler(page);
   const result = await page.evaluate(async () => {
     const workers = [];
@@ -307,18 +334,19 @@ test('unused warmup expires and warmup load failures recover without retaining w
     workers[1].onmessage({ data: { result: 'ok' } });
     await loaded;
     await new Promise(resolve => setTimeout(resolve, 30));
-    const idleExpired = compiler.warming === null;
+    const stayedWarm = compiler.engine?.ready === true && workers[1].terminated === 0;
+    compiler.dispose();
     const failed = compiler.warmup().catch(error => error.message);
     workers[2].onerror({ message: 'warmup load error' });
     const failure = await failed;
     const retry = compiler.warmup();
     workers[3].onmessage({ data: { result: 'ok' } });
     await retry;
-    compiler.cancel();
-    return { expired, idleExpired, failure, terminated: workers.map(worker => worker.terminated) };
+    compiler.dispose();
+    return { expired, stayedWarm, failure, terminated: workers.map(worker => worker.terminated) };
   });
   expect(result.expired).toContain('engine loading timed out');
-  expect(result.idleExpired).toBe(true);
+  expect(result.stayedWarm).toBe(true);
   expect(result.failure).toBe('warmup load error');
   expect(result.terminated).toEqual([1, 1, 1, 1]);
 });
@@ -335,7 +363,7 @@ test('timeout, dispatch, status, loading and decoding errors release workers and
     const failures = [];
     const fail = async (trigger, onStatus) => {
       const promise = compiler.compile('source', onStatus).catch(error => error.message);
-      trigger?.(records.at(-1));
+      await trigger?.(records.at(-1));
       failures.push(await promise);
       if (compiler.active) throw new Error('Compiler did not release its job.');
     };
@@ -347,7 +375,11 @@ test('timeout, dispatch, status, loading and decoding errors release workers and
     await fail(null, () => { throw new Error('status failed'); });
     await fail(worker => worker.onerror({ message: 'engine failed' }));
     await fail(worker => worker.onmessageerror());
-    await fail(worker => worker.onmessage({ data: { cmd: 'writefile', result: 'failed' } }));
+    await fail(async worker => {
+      worker.onmessage({ data: { result: 'ok' } });
+      await compiler.warmup();
+      worker.onmessage({ data: { cmd: 'writefile', result: 'failed' } });
+    });
     let postsAfterCancellation = 0;
     await fail(worker => {
       worker.postMessage = () => { postsAfterCancellation++; };
@@ -355,9 +387,11 @@ test('timeout, dispatch, status, loading and decoding errors release workers and
     }, status => {
       if (status === 'Typesetting locally...') compiler.cancel();
     });
+    const keptAfterCancellation = compiler.engine?.ready === true;
+    compiler.dispose();
     compiler.workerFactory = () => { throw new Error('worker unavailable'); };
     failures.push(await compiler.compile('source').catch(error => error.message));
-    return { failures, terminated: records.map(worker => worker.terminated), postsAfterCancellation, active: compiler.active };
+    return { failures, terminated: records.map(worker => worker.terminated), postsAfterCancellation, keptAfterCancellation, active: compiler.active };
   });
   expect(result.failures).toEqual([
     'Compilation timed out after 0.01 seconds. Simplify the document and try again.',
@@ -366,8 +400,9 @@ test('timeout, dispatch, status, loading and decoding errors release workers and
     'The browser compiler could not prepare the document. Try compiling again.',
     'Compilation cancelled.', 'worker unavailable',
   ]);
-  expect(result.terminated).toEqual(Array(7).fill(1));
+  expect(result.terminated.every(count => count === 1)).toBe(true);
   expect(result.postsAfterCancellation).toBe(0);
+  expect(result.keptAfterCancellation).toBe(true);
   expect(result.active).toBeNull();
 });
 
@@ -379,7 +414,7 @@ test('startup preparation rejects oversized packages, releases its worker and re
   const failure = await page.evaluate(async () => {
     const compiler = new window.LatexCompiler();
     const message = await compiler.warmup().then(() => null, error => error.message);
-    return { message, warming: compiler.warming };
+    return { message, warming: compiler.engine };
   });
   expect(failure.message).toContain('startup packages exceeded their memory limit');
   expect(failure.warming).toBeNull();

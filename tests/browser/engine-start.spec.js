@@ -14,6 +14,7 @@ async function observeWorkers(page) {
         this.terminate = () => { record.terminated++; terminate(); };
         this.addEventListener('message', ({ data }) => {
           if (!data.cmd && data.result === 'ok') record.ready = performance.now();
+          if (data.cmd === 'compile') record.compiles = (record.compiles || 0) + 1;
           if (data.cmd === 'compile' && data.result === 'ok') record.magic = new TextDecoder().decode(new Uint8Array(data.pdf).slice(0, 5));
         });
       }
@@ -40,7 +41,8 @@ test('engine becomes ready while main JS and CSS are held, then the app adopts i
     expect(await page.locator('#root').textContent()).toBe('');
   } finally { release(); }
   await page.waitForFunction(() => window.engineStarts[0]?.magic === '%PDF-');
-  await expect.poll(() => page.evaluate(() => window.engineStarts[0].terminated)).toBe(1);
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(() => window.engineStarts[0].terminated)).toBe(0);
   const workers = await page.evaluate(() => window.engineStarts);
   expect(workers).toHaveLength(1);
   expect(workers[0].magic).toBe('%PDF-');
@@ -100,4 +102,64 @@ test('an early worker held by a debugger that never resumes it is replaced and t
   expect(workers[0].terminated).toBeGreaterThan(0);
   expect(workers[0].ready).toBeUndefined();
   expect(workers[1].magic).toBe('%PDF-');
+});
+
+test('switching between documents reuses one warm engine without reloading packages', async ({ page }) => {
+  await observeWorkers(page);
+  const engineRequests = [];
+  page.context().on('request', request => {
+    if (/\/compiler\/(?:swiftlatexpdftex\.wasm|formats\/pdftex-|tex\/)/.test(request.url())) engineRequests.push(request.url());
+  });
+  await page.goto('/#workspace');
+  await page.waitForFunction(() => window.engineStarts[0]?.magic === '%PDF-');
+  const doc = n => String.raw`\documentclass{article}
+\begin{document}
+\section{Document ${n}}\label{s}
+See \ref{s}. Only-in-${n}.
+\end{document}`;
+  const ids = [];
+  for (const n of ['one', 'two', 'three']) {
+    ids.push(await page.evaluate(async source => {
+      const done = new Promise(resolve => { const off = window.latex.on('compile', event => { if (!event.cancelled) { off(); resolve(); } }); });
+      await window.latex.create({ title: `Warm ${source.length}-${Math.random()}`, source });
+      await done;
+      return window.latex.current().id;
+    }, doc(n)));
+  }
+  const requestsBeforeSwitches = engineRequests.length;
+  const switches = [];
+  for (const id of [ids[0], ids[2], ids[1], ids[0], ids[1], ids[2]]) {
+    switches.push(await page.evaluate(async id => {
+      const done = new Promise(resolve => {
+        const off = window.latex.on('compile', event => { if (event.documentId === id && !event.cancelled) { off(); resolve(event); } });
+      });
+      await window.latex.open(id);
+      const event = await done;
+      return { ok: event.ok, initializationMs: event.timings?.initializationMs, log: window.latex.log() };
+    }, id));
+  }
+  // Rapid switching cancels in-flight work without replacing the engine or leaking older results.
+  const rapid = await page.evaluate(async ids => {
+    const done = new Promise(resolve => {
+      const off = window.latex.on('compile', event => { if (event.documentId === ids[1] && !event.cancelled) { off(); resolve(event); } });
+    });
+    window.latex.open(ids[2]);
+    window.latex.open(ids[0]);
+    await window.latex.open(ids[1]);
+    const event = await done;
+    return { ok: event.ok, current: window.latex.current().id, log: window.latex.log() };
+  }, ids);
+  for (const result of switches) {
+    expect(result.ok).toBe(true);
+    expect(result.initializationMs).toBe(0);
+    expect(result.log.text).not.toContain('undefined references');
+  }
+  expect(rapid).toMatchObject({ ok: true, current: ids[1] });
+  const workers = await page.evaluate(() => window.engineStarts);
+  expect(workers).toHaveLength(1);
+  expect(workers[0]).toMatchObject({ terminated: 0, magic: '%PDF-' });
+  expect(workers[0].compiles).toBeGreaterThanOrEqual(2 * (1 + 3 + switches.length + 1));
+  expect(engineRequests.slice(requestsBeforeSwitches)).toEqual([]);
+  expect(engineRequests.filter(url => url.includes('.wasm'))).toHaveLength(1);
+  expect(engineRequests.filter(url => url.includes('/formats/'))).toHaveLength(1);
 });

@@ -318,9 +318,10 @@ test('cancelled font preparation cannot dispatch obsolete input or clear a newer
   assert.equal(compiler.active, active);
   assert.equal(workers.length, 2);
   assert.equal(await first, 'Compilation cancelled.');
-  assert.equal(await cancelledReadiness, 'Compilation cancelled.');
   compiler.cancel();
   assert.equal(await second, 'Compilation cancelled.');
+  compiler.dispose();
+  assert.equal(await cancelledReadiness, 'Compilation cancelled.');
 });
 
 test('font preparation uses a loading timeout and rejects oversized face counts before fetching', async () => {

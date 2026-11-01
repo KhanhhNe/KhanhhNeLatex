@@ -484,7 +484,7 @@ function App() {
       clearTimeout(timer.current);
       clearTimeout(liveTimer.current);
       compileRequest.current++;
-      compiler.current.cancel();
+      compiler.current.dispose();
       discardPendingViewer();
       if (pdfRef.current) URL.revokeObjectURL(pdfRef.current);
       for (const url of retiredUrls.current) if (url) URL.revokeObjectURL(url);

@@ -60,6 +60,7 @@ async function fakeEngine(page) {
         setTimeout(() => this.onmessage?.({ data: { result: 'ok' } }), 30);
       }
       postMessage(message) {
+        if (message.cmd === 'flushcache') this.passes = 0;
         if (message.cmd === 'writefile') this.source = message.src;
         if (message.cmd === 'compilelatex') {
           if (!this.passes++) window.engineJobs.push({ source: this.source });
@@ -255,7 +256,7 @@ test('later compile requests replace in-flight work and ignore its late completi
   await sourceEditor(page).press('Control+Enter');
   await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(3);
   await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.engineWorkers[1].terminated)).toBe(true);
+  expect(await page.evaluate(() => window.engineWorkers.map(worker => worker.terminated))).toEqual([false]);
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser');
   await expect(page.locator('.preview-status')).not.toContainText('out of date');
   await page.locator('.compile-log summary').click();
