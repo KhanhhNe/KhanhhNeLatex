@@ -13,7 +13,7 @@ export function readLayout(text) {
   } catch { return { sidebar: null, split: .5 }; }
 }
 
-export default function useWorkspaceResize(enabled) {
+export default function useWorkspaceResize(enabled, sidebarHidden = false) {
   const workspace = useRef(null);
   const panels = useRef(null);
   const sidebarHandle = useRef(null);
@@ -33,12 +33,12 @@ export default function useWorkspaceResize(enabled) {
     };
     const apply = () => {
       if (!desktop.matches) return;
-      const gap = handles[0].getBoundingClientRect().width;
-      sidebarMax = Math.min(360, root.clientWidth - 680 - gap * 2);
+      const gaps = handles.reduce((total, handle) => total + handle.getBoundingClientRect().width, 0);
+      sidebarMax = Math.min(360, root.clientWidth - 680 - gaps);
       sidebar = clamp(preference.sidebar ?? (innerWidth >= 1600 ? 220 : 208), 180, sidebarMax);
       root.style.setProperty('--sidebar-width', `${sidebar}px`);
       // Derive the remaining width immediately; the grid may not have laid out yet.
-      const available = root.clientWidth - sidebar - gap * 2;
+      const available = root.clientWidth - (sidebarHidden ? 0 : sidebar) - gaps;
       sourceMax = available - 360;
       source = clamp(available * preference.split, 320, sourceMax);
       pair.style.setProperty('--source-width', `${source}px`);
@@ -140,6 +140,6 @@ export default function useWorkspaceResize(enabled) {
       listeners.forEach(remove => remove());
       cancelAnimationFrame(frame);
     };
-  }, [enabled]);
+  }, [enabled, sidebarHidden]);
   return { workspace, panels, sidebarHandle, splitHandle };
 }

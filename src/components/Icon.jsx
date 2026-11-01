@@ -9,6 +9,7 @@ const paths = {
   download: 'M12 4v12 m-5-5 5 5 5-5 M4 17v3h16v-3',
   refresh: 'M19 8a8 8 0 1 0 1 7 M19 3v6h-6',
   close: 'm6 6 12 12 M6 18 18 6',
+  more: 'M5 12h.01 M12 12h.01 M19 12h.01',
   help: 'M9 8a3 3 0 1 1 5 2c-2 1-2 2-2 3 M12 17h.01 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
   user: 'M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4 21v-2a8 8 0 0 1 16 0v2',
   device: 'M6 3h12v18H6z M10 18h4',
