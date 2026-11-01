@@ -75,7 +75,7 @@ export function createApp(env) {
   };
   app.post('/api/register', throttle, authRoute(true));
   app.post('/api/login', throttle, authRoute(false));
-  app.use('/api', async (req, res, next) => {
+  app.use(['/api/me', '/api/logout', '/api/documents'], async (req, res, next) => {
     const token = req.headers.cookie?.split(';').map(s => s.trim()).find(s => s.startsWith('folio_session='))?.slice(14);
     if (!token || !/^[a-f0-9]{64}$/.test(token)) return res.status(401).json({ error: 'Sign in to sync your documents.' });
     req.sessionHash = digest(token);

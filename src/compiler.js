@@ -1,9 +1,11 @@
 import { detectFonts, usesFontspec, GoogleFontLoader } from './google-fonts.js';
 
 export class LatexCompiler {
-  constructor({ workerFactory = engine => new Worker(engine === 'xetex' ? '/compiler/native-worker.js?v=fontspec-3' : '/compiler/worker.js'), timeout = 60000, fontLoader = new GoogleFontLoader() } = {}) {
+  constructor({ workerFactory = engine => new Worker(engine === 'xetex' ? '/compiler/native-worker.js?v=startup-4' : '/compiler/worker.js?v=startup-4'), timeout = 60000, loadTimeout = 300000, idleTimeout = 60000, fontLoader = new GoogleFontLoader() } = {}) {
     this.workerFactory = workerFactory;
     this.timeout = timeout;
+    this.loadTimeout = loadTimeout;
+    this.idleTimeout = idleTimeout;
     this.active = null;
     this.warming = null;
     this.fontLoader = fontLoader;
@@ -32,7 +34,7 @@ export class LatexCompiler {
       },
     };
     const expire = () => warming.dispose(new Error('Browser engine warmup expired. Compile to restart it.'));
-    warming.timer = setTimeout(expire, this.timeout);
+    warming.timer = setTimeout(() => warming.dispose(new Error('Browser engine loading timed out. Check your connection and try again.')), this.loadTimeout);
     this.warming = warming;
     worker.onerror = event => warming.dispose(new Error(event.message || 'The browser compiler could not load.'));
     worker.onmessageerror = () => warming.dispose(new Error('The browser compiler returned an unreadable message. Try compiling again.'));
@@ -42,7 +44,7 @@ export class LatexCompiler {
         warming.ready = true;
         warming.initializationMs = performance.now() - startedAt;
         clearTimeout(warming.timer);
-        warming.timer = setTimeout(expire, this.timeout);
+        warming.timer = setTimeout(expire, this.idleTimeout);
         resolve({ initializationMs: warming.initializationMs });
       } else if (data?.result === 'failed') {
         warming.dispose(new Error('The browser compiler could not load.'));
@@ -62,61 +64,28 @@ export class LatexCompiler {
   compileNative(source, declarations, onStatus) {
     this.warming?.dispose(new Error('Compilation cancelled.'));
     const controller = new AbortController();
-    const requestedAt = performance.now();
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      let readiness;
-      let ready;
-      let notReady;
-      const finish = error => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        controller.abort();
-        if (this.active === pending) this.active = null;
-        notReady?.(error);
-        reject(error);
-      };
-      const pending = {
-        cancel: () => finish(new Error('Compilation cancelled.')),
-        warmup: () => readiness ||= new Promise((done, fail) => { ready = done; notReady = fail; }),
-      };
-      const timer = setTimeout(() => finish(new Error(`Compilation timed out after ${this.timeout / 1000} seconds. Simplify the document and try again.`)), this.timeout);
-      this.active = pending;
-      this.fontLoader.prepare(source, declarations, controller.signal, onStatus).then(prepared => {
-        if (settled) return;
-        clearTimeout(timer);
-        this.active = null;
-        settled = true;
-        const remaining = this.timeout - (performance.now() - requestedAt);
-        if (remaining <= 0) {
-          controller.abort();
-          const error = new Error('Compilation timed out while downloading fonts.');
-          notReady?.(error);
-          reject(error);
-          return;
-        }
-        const compilation = this.compilePrepared(prepared.source, onStatus, { engine: 'xetex', files: prepared.files, timeout: remaining });
-        if (readiness) this.active?.warmup().then(ready, notReady);
-        compilation.then(result => {
-          result.timings.totalMs = performance.now() - requestedAt;
-          resolve(result);
-        }, error => { notReady?.(error); reject(error); });
-      }, finish);
+    return this.compilePrepared(source, onStatus, {
+      engine: 'xetex', controller,
+      prepare: () => this.fontLoader.prepare(source, declarations, controller.signal, onStatus),
     });
   }
 
-  compilePrepared(source, onStatus, { engine = 'pdftex', files = [], timeout = this.timeout } = {}) {
+  compilePrepared(source, onStatus, { engine = 'pdftex', controller, prepare } = {}) {
     const requestedAt = performance.now();
     const warming = this.warming;
     this.warming = null;
     if (warming) clearTimeout(warming.timer);
     return new Promise((resolve, reject) => {
       let worker;
-      try { worker = warming?.worker || this.workerFactory(engine); } catch (error) { reject(error); return; }
+      try { worker = warming?.worker || this.workerFactory(engine); } catch (error) { controller?.abort(); reject(error); return; }
       let settled = false;
       let started = false;
-      let compilationStartedAt;
+      let engineReady = !!warming?.ready;
+      let documentReady = !prepare;
+      let files = [];
+      let timer;
+      let compilationMs = 0;
+      let runningSince;
       let initializationMs;
       let readiness;
       const waiting = [];
@@ -131,6 +100,7 @@ export class LatexCompiler {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        controller?.abort();
         worker.onmessage = null;
         worker.onerror = null;
         worker.onmessageerror = null;
@@ -142,7 +112,34 @@ export class LatexCompiler {
         }
         if (error) reject(error); else resolve(result);
       };
-      const timer = setTimeout(() => finish(new Error(`Compilation timed out after ${this.timeout / 1000} seconds. Simplify the document and try again.`)), timeout);
+      const pause = () => {
+        if (runningSince !== undefined) {
+          compilationMs += performance.now() - runningSince;
+          runningSince = undefined;
+        }
+        clearTimeout(timer);
+        timer = setTimeout(() => finish(new Error('Browser engine loading timed out. Check your connection and try again.')), this.loadTimeout);
+      };
+      const resume = () => {
+        clearTimeout(timer);
+        const now = performance.now();
+        if (runningSince !== undefined) compilationMs += now - runningSince;
+        runningSince = now;
+        timer = setTimeout(() => finish(new Error(`Compilation timed out after ${this.timeout / 1000} seconds. Simplify the document and try again.`)), Math.max(0, this.timeout - compilationMs));
+      };
+      const start = () => {
+        if (settled || started || !engineReady || !documentReady) return;
+        started = true;
+        ready();
+        onStatus('Typesetting locally...');
+        if (settled) return;
+        resume();
+        for (const file of files) worker.postMessage({ cmd: 'writefile', url: file.filename, src: file.bytes });
+        worker.postMessage({ cmd: 'writefile', url: 'main.tex', src: source });
+        worker.postMessage({ cmd: 'setmainfile', url: 'main.tex' });
+        worker.postMessage({ cmd: 'compilelatex' });
+      };
+      pause();
       this.active = {
         cancel: () => finish(new Error('Compilation cancelled.')),
         warmup: () => initializationMs !== undefined
@@ -155,19 +152,17 @@ export class LatexCompiler {
       worker.onmessage = ({ data }) => {
         if (settled) return;
         try {
+          if (data.cmd === 'phase') {
+            if (data.phase === 'loading') { pause(); onStatus(`Loading browser engine: ${data.name}...`); }
+            else if (data.phase === 'compiling') { resume(); onStatus('Typesetting locally...'); }
+            return;
+          }
           if (data.cmd === 'missing') { onStatus(`Loading ${data.name}...`); return; }
           if (data.result === 'failed' && data.cmd !== 'compile') {
-            finish(new Error('The browser compiler could not prepare the document. Try compiling again.'));
+            finish(Object.assign(new Error('The browser compiler could not prepare the document. Try compiling again.'), { log: String(data.log || '').slice(-24000) }));
           } else if (!data.cmd && data.result === 'ok' && !started) {
-            started = true;
-            ready();
-            onStatus('Typesetting locally...');
-            if (settled) return;
-            compilationStartedAt = performance.now();
-            for (const file of files) worker.postMessage({ cmd: 'writefile', url: file.filename, src: file.bytes });
-            worker.postMessage({ cmd: 'writefile', url: 'main.tex', src: source });
-            worker.postMessage({ cmd: 'setmainfile', url: 'main.tex' });
-            worker.postMessage({ cmd: 'compilelatex' });
+            engineReady = true;
+            start();
           } else if (data.cmd === 'compile') {
             if (data.result !== 'ok' || !data.pdf ||
                 (engine === 'xetex' && /Missing character:|Font shape .* undefined|Some font shapes were not available|font .* not loadable/.test(data.log || ''))) {
@@ -180,11 +175,17 @@ export class LatexCompiler {
               if (!settled) worker.postMessage({ cmd: 'compilelatex' });
             } else {
               const finishedAt = performance.now();
+              if (runningSince !== undefined) compilationMs += finishedAt - runningSince;
+              if (compilationMs >= this.timeout) {
+                finish(new Error(`Compilation timed out after ${this.timeout / 1000} seconds. Simplify the document and try again.`));
+                return;
+              }
               finish(null, {
                 pdf: data.pdf, log: String(data.log || '').slice(-24000),
                 timings: {
                   initializationMs: initializationMs ?? finishedAt - requestedAt,
-                  compilationMs: compilationStartedAt === undefined ? 0 : finishedAt - compilationStartedAt,
+                  loadingMs: finishedAt - requestedAt - compilationMs,
+                  compilationMs,
                   totalMs: finishedAt - requestedAt,
                 },
               });
@@ -194,7 +195,16 @@ export class LatexCompiler {
       };
       try {
         onStatus('Loading browser engine...');
-        if (!settled && warming?.ready) worker.onmessage({ data: { result: 'ok' } });
+        if (prepare && !settled) {
+          prepare().then(prepared => {
+            if (settled) return;
+            source = prepared.source;
+            files = prepared.files;
+            documentReady = true;
+            try { start(); } catch (error) { finish(error); }
+          }, error => finish(error));
+        }
+        start();
       } catch (error) { finish(error); }
     });
   }

@@ -6,15 +6,15 @@
   "license": "AGPL-3.0-only",
   "files": [
     "src", "server", "scripts", "migrations", "tests", ".github", "AGENTS.md",
-    "public/compiler", "!public/compiler/xcolor-source.tar.gz", "!public/compiler/pgf-source.tar.gz", "public/_headers",
+    "public/compiler", "!public/compiler/xcolor-source.tar.gz", "!public/compiler/pgf-source.tar.gz", "!public/compiler/formats", "public/_headers",
     "index.html", "vite.config.js", "playwright.config.js",
     "cloudflare.config.ts", "wrangler.config.ts", "wrangler.jsonc",
-    "drizzle.config.js", ".env.example", ".gitignore",
+    "drizzle.config.js", ".gitignore",
     "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "package-lock.json", ".gitattributes"
   ],
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "node scripts/asset-hashes.mjs && npm run source:bundle && vite build",
+    "build": "node scripts/compress-tex-formats.mjs && node scripts/asset-hashes.mjs && npm run source:bundle && vite build",
     "preview": "wrangler dev --ip 127.0.0.1 --port 8787",
     "dev:worktree": "node scripts/dev-worktree.mjs",
     "db:local": "wrangler d1 migrations apply DB --local",
