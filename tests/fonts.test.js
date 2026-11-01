@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectFonts, fontSource, fontFace, GoogleFontLoader } from '../src/google-fonts.js';
+import { detectFonts, usesFontspec, fontSource, fontFace, GoogleFontLoader } from '../src/google-fonts.js';
 import { trustedFontUrl, fontAlias, MAX_FONT_BYTES, readBounded } from '../src/font-policy.js';
 import { googleFontMetadata } from '../server/fonts.js';
 import { LatexCompiler } from '../src/compiler.js';
+import { readFile } from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
 
 const url = 'https://fonts.gstatic.com/s/example/v1/example.ttf';
 const ttf = new Uint8Array(40); ttf[1] = 1; ttf[5] = 1;
@@ -40,10 +42,122 @@ test('generic families and style suffixes work, unsafe/computed declarations fai
   assert.equal(fontFace('Archivo Black').family, 'Archivo Black');
   for (const name of ['https://evil.test/font', '../font.ttf', String.raw`\fontname`, 'x'.repeat(81)]) assert.throws(() => fontFace(name));
   for (const declaration of [
-    String.raw`\setmainfont[Path=../]{Roboto}`, String.raw`\setmainfont{Roboto}[Scale=2]`,
+    String.raw`\setmainfont[Path=../]{Roboto}`, String.raw`\setmainfont{Roboto}[Scale=200]`,
     String.raw`\newfontfamily\name{\computed}`, String.raw`\setmainfont{Roboto`,
   ]) assert.throws(() => detectFonts(declaration));
   assert.deepEqual(detectFonts(String.raw`\documentclass{article}\begin{document}No fonts.\end{document}`), []);
+});
+
+test('fontspec without declarations selects native defaults, never an implicit Google family', async () => {
+  const input = String.raw`\RequirePackage [no-math] {fontspec}\defaultfontfeatures{Ligatures=TeX}\begin{document}Default.\end{document}`;
+  assert.deepEqual(detectFonts(input), []);
+  assert.equal(usesFontspec(input), true);
+  assert.equal(usesFontspec(String.raw`% \usepackage{fontspec}`), false);
+  const prepared = await new GoogleFontLoader({ fetcher: () => { throw new Error('Must stay local'); } })
+    .prepare(input, [], new AbortController().signal, () => {});
+  assert.deepEqual(prepared.files, []);
+  assert.ok(prepared.source.endsWith(input));
+  let engine;
+  const compiler = new LatexCompiler({ workerFactory: name => {
+    engine = name;
+    return { terminate() {}, postMessage() {} };
+  } });
+  const result = compiler.compile(input).catch(error => error.message);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(engine, 'xetex');
+  compiler.cancel();
+  assert.equal(await result, 'Compilation cancelled.');
+});
+
+test('standard before/after options and safe features survive compilation-only rewriting', async () => {
+  const input = String.raw`\setmainfont[Scale=1.1]{Roboto}[BoldFont={Roboto Bold},Ligatures={TeX,Common},Numbers=Lining]
+\newfontfamily{\serif}{Crimson Pro}[Scale=MatchLowercase,LetterSpace=2,Color=112233,Renderer=OpenType]
+\fontspec{Lato}[BoldFont={}]`;
+  const declarations = detectFonts(input);
+  assert.equal(declarations[0].faces.BoldFont.family, 'Roboto Bold');
+  assert.equal(declarations[2].faces.BoldFont, null);
+  assert.deepEqual(declarations[0].features, ['Scale={1.1}', 'Ligatures={TeX,Common}', 'Numbers={Lining}']);
+  const loader = new GoogleFontLoader({ cacheStorage: undefined, fetcher: async endpoint => {
+    const query = new URL(endpoint, 'http://local').searchParams;
+    return endpoint.startsWith('/api') ? Response.json({ url, family: query.get('family'), weight: Number(query.get('weight')), italic: query.get('italic') === '1' }) : new Response(ttf);
+  } });
+  const prepared = await loader.prepare(input, declarations, new AbortController().signal, () => {});
+  assert.match(prepared.source, /Scale=\{1.1\},Ligatures=\{TeX,Common\},Numbers=\{Lining\}/);
+  assert.match(prepared.source, /\\newfontfamily\{\\serif\}\[/);
+  assert.equal(prepared.source.includes('{Roboto}['), false);
+  assert.equal(input.includes('googlefont'), false);
+  for (const options of ['Path=../', 'Extension=.ttf', 'Mapping=https://evil.test', 'Scale=0', 'LetterSpace=999', String.raw`Scale=\computed`, 'RawFeature=+xxxx']) {
+    assert.throws(() => detectFonts(`\\setmainfont{Roboto}[${options}]`), /Unsupported fontspec option/);
+    assert.throws(() => detectFonts(`\\defaultfontfeatures{${options}}`), /Unsupported fontspec option/);
+  }
+});
+
+test('bounded unconditional literal macros resolve before use, including style names and aliases', () => {
+  const input = String.raw`\newcommand{\mainfont}{Roboto}
+\providecommand*{\mainfont}{Lato}
+\def\boldfont{Roboto Bold}
+\newcommand\alias[0]{\mainfont}
+\setmainfont[BoldFont={\boldfont}]{\alias}
+\renewcommand{\mainfont}{Crimson Pro}
+\newfontfamily\serif{\mainfont}`;
+  const declarations = detectFonts(input);
+  assert.equal(declarations[0].faces.UprightFont.family, 'Roboto');
+  assert.equal(declarations[0].faces.BoldFont.family, 'Roboto Bold');
+  assert.equal(declarations[1].faces.UprightFont.family, 'Crimson Pro');
+  for (const definition of [
+    String.raw`\newcommand{\fontname}[1]{Roboto}`,
+    String.raw`\def\fontname#1{Roboto}`,
+    String.raw`{\def\fontname{Roboto}}`,
+    String.raw`\iftrue\def\fontname{Roboto}\fi`,
+    String.raw`\edef\fontname{Roboto}`,
+    String.raw`\def\fontname{\fontname}`,
+    String.raw`\def\fontname{Roboto}\let\fontname\unknown`,
+    String.raw`\def*\fontname{Roboto}`,
+  ]) assert.throws(() => detectFonts(definition + String.raw`\setmainfont{\fontname}`), /macro|literal aliases/);
+  assert.throws(() => detectFonts(String.raw`\setmainfont{\later}\def\later{Roboto}`), /before the font declaration/);
+  assert.throws(() => detectFonts(String.raw`\def\fontname{https://evil.test/a.ttf}\setmainfont{\fontname}`), /URLs, paths/);
+  const aliases = Array.from({ length: 9 }, (_, index) => `\\def\\font${String.fromCharCode(65 + index)}{\\font${String.fromCharCode(66 + index)}}`).join('');
+  assert.throws(() => detectFonts(`${aliases}\\def\\fontJ{Roboto}\\setmainfont{\\fontA}`), /eight literal aliases/);
+});
+
+test('native converter resolves bundled absolute OTF paths only through its static manifest', async () => {
+  const self = { location: { href: 'https://app.test/compiler/dvipdf-worker.js?v=fontspec-2', search: '?v=fontspec-2' }, postMessage() {} };
+  const imports = [];
+  const scope = { self, URL, importScripts: url => imports.push(url) };
+  runInNewContext(await readFile(new URL('../public/compiler/native-manifest.js', import.meta.url), 'utf8'), scope);
+  const requests = [];
+  self.XMLHttpRequest = class {
+    open(method, url) { requests.push(url); }
+    send() { this.status = 200; }
+  };
+  runInNewContext(await readFile(new URL('../public/compiler/native-package-loader.js', import.meta.url), 'utf8'), scope);
+  assert.deepEqual(imports, ['/compiler/native-manifest.js?v=fontspec-2']);
+  const xhr = new self.XMLHttpRequest();
+  xhr.open('GET', 'https://texlive.texlyre.org/xetex/47//tex/lmroman10-regular.otf');
+  xhr.send();
+  assert.equal(xhr.status, 200);
+  assert.equal(xhr.getResponseHeader(), 'lmroman10-regular.otf');
+  assert.deepEqual(requests, ['/compiler/native-tex/lmroman10-regular.otf']);
+  xhr.open('GET', 'https://texlive.texlyre.org/xetex/47//tex/unlisted.otf');
+  xhr.send();
+  assert.equal(xhr.status, 301);
+  assert.equal(xhr.response, undefined);
+  assert.equal(requests.length, 1);
+  for (const engine of ['xetex', 'dvipdf']) {
+    imports.length = 0;
+    runInNewContext(await readFile(new URL(`../public/compiler/${engine}-worker.js`, import.meta.url), 'utf8'), scope);
+    assert.equal(imports[0], '/compiler/native-package-loader.js?v=fontspec-2');
+  }
+  const children = [];
+  scope.Worker = class {
+    constructor(url) { this.url = url; children.push(this); }
+    terminate() {}
+  };
+  runInNewContext(await readFile(new URL('../public/compiler/native-worker.js', import.meta.url), 'utf8'), scope);
+  for (let pass = 0; pass < 2; pass++) children[0].onmessage({ data: { cmd: 'compile', result: 'ok', pdf: new ArrayBuffer(1) } });
+  assert.deepEqual(children.map(child => child.url), [
+    '/compiler/xetex-worker.js?v=fontspec-2', '/compiler/dvipdf-worker.js?v=fontspec-2',
+  ]);
 });
 
 test('font URL constraints reject credentials, redirects, paths, queries and non-TTF formats', () => {

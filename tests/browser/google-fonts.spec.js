@@ -106,6 +106,55 @@ test('font cancellation aborts downloads, latest normal compile stays active, an
   expect(result.idle).toBe(true);
 });
 
+test('imported fontspec documents support default native fonts, literal macros and standard feature positions', async ({ page }) => {
+  await fontService(page);
+  await page.goto('/#workspace');
+  const compile = async source => {
+    await fillSource(page, source);
+    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export PDF' }).click();
+    return readFile(await (await download).path());
+  };
+  const requests = [];
+  page.on('request', request => requests.push(request.url()));
+  const defaults = String.raw`\documentclass[11pt]{article}\usepackage[no-math]{fontspec}
+\defaultfontfeatures{Ligatures=TeX,Mapping=tex-text}
+\begin{document}Native default text. \textbf{Default bold.} \textit{Default italic.}
+\textsf{Default sans. \textbf{Sans bold.} \textit{Sans italic.} \textbf{\textit{Sans bold italic.}}}
+\texttt{Default mono. \textbf{Mono bold.} \textit{Mono italic.} \textbf{\textit{Mono bold italic.}}}
+\textbf{\textit{Serif bold italic.}}\end{document}`;
+  const native = await compile(defaults);
+  const defaultFonts = await inspectFonts(native);
+  expect(defaultFonts.some(font => font.name.includes('LMRoman'))).toBe(true);
+  expect(defaultFonts.every(font => font.embeddedBytes > 1000)).toBe(true);
+  expect(requests.some(url => url.includes('/api/fonts?') || url.startsWith('https://fonts.gstatic.com'))).toBe(false);
+  await writeFile(test.info().outputPath('fontspec-defaults.pdf'), native);
+
+  const imported = String.raw`\documentclass{article}\usepackage{fontspec}
+\newcommand{\mainfont}{Roboto}
+\def\boldfont{Roboto Bold}
+\defaultfontfeatures{Ligatures=TeX}
+\setmainfont[Scale=1.05]{\mainfont}[BoldFont={\boldfont},Numbers=Lining,Kerning=On,Script=Latin,Language=English]
+\newfontfamily{\crimson}{Crimson Pro}[Scale=1.1,LetterSpace=1,Color=112233,Renderer=OpenType]
+\newfontfamily\lato[Scale=MatchLowercase]{Lato}
+\begin{document}Imported Roboto regular. \textbf{Imported Roboto Bold.}
+{\crimson Imported Crimson Pro.} {\lato Imported Lato.}
+{\fontspec{Lato}[Scale=0.9] Inline Lato.}
+\end{document}`;
+  const bytes = await compile(imported);
+  const fonts = await inspectFonts(bytes);
+  for (const name of ['Roboto-Regular', 'Roboto-Bold', 'CrimsonPro-Regular', 'Lato-Regular'])
+    expect(fonts.some(font => font.name.endsWith(name) && font.embeddedBytes > 1000), name).toBe(true);
+  const exported = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export .tex' }).click();
+  expect(await readFile(await (await exported).path(), 'utf8')).toBe(imported);
+  await expectSource(page, imported);
+  await writeFile(test.info().outputPath('fontspec-imported.pdf'), bytes);
+  await writeFile(test.info().outputPath('fontspec-imported.tex'), imported);
+});
+
 test('native engine cancellation releases descendant workers and a fresh native compile succeeds', async ({ page }) => {
   await fontService(page);
   await loadCompiler(page);

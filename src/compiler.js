@@ -1,7 +1,7 @@
-import { detectFonts, GoogleFontLoader } from './google-fonts.js';
+import { detectFonts, usesFontspec, GoogleFontLoader } from './google-fonts.js';
 
 export class LatexCompiler {
-  constructor({ workerFactory = engine => new Worker(engine === 'xetex' ? '/compiler/native-worker.js' : '/compiler/worker.js'), timeout = 60000, fontLoader = new GoogleFontLoader() } = {}) {
+  constructor({ workerFactory = engine => new Worker(engine === 'xetex' ? '/compiler/native-worker.js?v=fontspec-2' : '/compiler/worker.js'), timeout = 60000, fontLoader = new GoogleFontLoader() } = {}) {
     this.workerFactory = workerFactory;
     this.timeout = timeout;
     this.active = null;
@@ -55,7 +55,7 @@ export class LatexCompiler {
     this.active?.cancel();
     let declarations;
     try { declarations = detectFonts(source); } catch (error) { return Promise.reject(error); }
-    if (declarations.length) return this.compileNative(source, declarations, onStatus);
+    if (declarations.length || usesFontspec(source)) return this.compileNative(source, declarations, onStatus);
     return this.compilePrepared(source, onStatus);
   }
 

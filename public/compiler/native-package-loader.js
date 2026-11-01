@@ -1,10 +1,11 @@
-importScripts('/compiler/native-manifest.js');
+importScripts(`/compiler/native-manifest.js${self.location.search}`);
 const NativeXHR = self.XMLHttpRequest;
 class NativePackageXHR {
   open(method, url) {
-    const key = new URL(url, self.location.href).pathname.split('/xetex/')[1];
+    const key = new URL(url, self.location.href).pathname.split('/xetex/')[1]?.replace(/^47\/\/tex\//, '47/');
     this.name = key;
     this.asset = self.NATIVE_TEX_FILES[key];
+    this.xhr = null;
     if (this.asset) {
       this.xhr = new NativeXHR();
       this.xhr.open('GET', `/compiler/${this.asset}`, false);
