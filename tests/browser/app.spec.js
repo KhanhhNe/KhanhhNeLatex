@@ -38,9 +38,9 @@ test('browser editor compiles real PDF locally, exports and preserves drafts wit
   await expectSource(page, source + ' ');
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });
   await expect(page.locator('.preview-status')).toContainText('Preview is out of date');
-  const iframe = page.locator('iframe[title="Compiled PDF"]');
+  const iframe = page.locator('.pdf-viewer[title="Compiled PDF"]');
   await expect(iframe).toBeVisible();
-  expect(await iframe.getAttribute('src')).toMatch(/^blob:/);
+  expect(await iframe.getAttribute('data-src')).toMatch(/^blob:/);
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export PDF' }).click();
   const pdf = await readFile(await (await download).path());

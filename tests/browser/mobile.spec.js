@@ -137,7 +137,7 @@ test('mobile real PDF, recompilation, error log, cancel and exports preserve con
   await fillSource(page, source);
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });
-  const viewer = page.locator('iframe[title="Compiled PDF"]');
+  const viewer = page.locator('.pdf-viewer[title="Compiled PDF"]');
   await expect(viewer).toBeVisible();
   await expect(page.locator('.pdf-viewer.pending')).toHaveCount(0);
   expect(await viewer.evaluate(element => ({ filter: getComputedStyle(element).filter, scheme: getComputedStyle(element).colorScheme }))).toEqual({ filter: 'none', scheme: 'light' });

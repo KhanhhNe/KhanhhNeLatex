@@ -6,6 +6,7 @@ import LatexEditor from './components/LatexEditor.jsx';
 import ProjectsView from './components/ProjectsView.jsx';
 import DocumentAvailability from './components/DocumentAvailability.jsx';
 import Icon from './components/Icon.jsx';
+import PdfPreview from './components/PdfPreview.jsx';
 import useWorkspaceResize from './components/workspace-resize.js';
 import { mergeDocuments } from './document-list.js';
 import './style.css';
@@ -92,6 +93,7 @@ function App() {
   const generatedPdf = useRef(null);
   const pendingViewer = useRef(null);
   const retiredUrls = useRef([]);
+  const previewView = useRef(null);
   const compileRequest = useRef(0);
   const liveTimer = useRef(null);
   const liveEnabled = useRef(false);
@@ -226,6 +228,7 @@ function App() {
       if (pdfRef.current) URL.revokeObjectURL(pdfRef.current);
       pdfRef.current = null;
       shownPdf.current = null;
+      previewView.current = null;
       generatedPdf.current = null;
       setPdf(null);
       setSidebar(false);
@@ -613,15 +616,14 @@ function App() {
               <div className="preview-status-message" role="status" aria-atomic="true"><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
             </div>
             <div className="pdf-area">{pdf ? <div className="pdf-stack">{[pdf, pendingPdf].filter(Boolean).map(viewer =>
-              <iframe key={viewer.url} title={viewer.url === pdf.url ? 'Compiled PDF' : 'Loading compiled PDF'}
-                className={viewer.url === pdf.url ? 'pdf-viewer' : `pdf-viewer pending ${viewer.ready ? 'ready' : ''}`}
-                aria-hidden={viewer.url !== pdf.url ? true : undefined} tabIndex={viewer.url === pdf.url ? 0 : -1}
+              <PdfPreview key={viewer.url} viewer={viewer} pending={viewer.url !== pdf.url}
+                viewState={previewView}
                 onError={() => {
                   if (pendingViewer.current?.url !== viewer.url) return;
                   discardPendingViewer();
                   notice(new Error('The new PDF preview could not load. The previous preview is still available; export the new PDF or compile again.'));
                 }}
-                onLoad={() => revealPreview(viewer.url)} src={`${viewer.url}#toolbar=0&navpanes=0`} />)}</div> :
+                onReady={() => revealPreview(viewer.url)} />)}</div> :
               <div className="empty-preview"><Icon name="file" />
                 <h1>{compiling ? 'Preparing preview' : 'PDF preview'}</h1><p>{compiling ? 'Typesetting your document…' : 'Compile to see your document here.'}</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}><Icon name="refresh" />Compile your document</button></div>}
             </div>

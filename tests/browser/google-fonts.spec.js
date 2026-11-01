@@ -230,9 +230,9 @@ test('workspace exports real embedded fonts and unchanged source, preserves last
   await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await expect(page.locator('.preview-status')).toContainText('Compiled in your browser', { timeout: 60000 });
-  const iframe = page.locator('iframe[title="Compiled PDF"]');
+  const iframe = page.locator('.pdf-viewer[title="Compiled PDF"]');
   await expect(iframe).toBeVisible();
-  const goodUrl = await iframe.getAttribute('src');
+  const goodUrl = await iframe.getAttribute('data-src');
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export PDF' }).click();
   const bytes = await readFile(await (await download).path());
@@ -247,7 +247,7 @@ test('workspace exports real embedded fonts and unchanged source, preserves last
   await fillSource(page, fixture.replace('{Roboto}', '{Family Does Not Exist 987654321}'));
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await expect(page.locator('.compile-log')).toContainText('no', { timeout: 30000 });
-  expect(await iframe.getAttribute('src')).toBe(goodUrl);
+  expect(await iframe.getAttribute('data-src')).toBe(goodUrl);
   await expectSource(page, fixture.replace('{Roboto}', '{Family Does Not Exist 987654321}'));
   expect(writes).toEqual([]);
 });
