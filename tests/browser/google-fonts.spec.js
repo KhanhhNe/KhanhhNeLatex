@@ -10,7 +10,7 @@ const fontRoot = new URL('../fixtures/fonts/', import.meta.url);
 const metadata = JSON.parse(await readFile(new URL('manifest.json', fontRoot), 'utf8'));
 
 async function loadCompiler(page) {
-  for (const file of ['compiler.js', 'google-fonts.js', 'font-policy.js']) {
+  for (const file of ['compiler.js', 'google-fonts.js', 'font-policy.js', 'engine-start.js']) {
     const body = await readFile(new URL(`../../src/${file}`, import.meta.url), 'utf8');
     await page.route(`**/${file === 'compiler.js' ? 'compiler-client.js' : file}`, route => route.fulfill({ contentType: 'text/javascript', body }));
   }
