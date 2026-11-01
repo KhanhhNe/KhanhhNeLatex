@@ -1,7 +1,7 @@
 import { detectFonts, usesFontspec, GoogleFontLoader } from './google-fonts.js';
-import { createEngineWarmup, takeEarlyWarmup, PDFTEX_WORKER } from './engine-start.js';
+import { createEngineWarmup, takeEarlyWarmup, createPdftexWorker } from './engine-start.js';
 
-const defaultWorkerFactory = engine => new Worker(engine === 'xetex' ? '/compiler/native-worker.js?v=startup-4' : PDFTEX_WORKER);
+const defaultWorkerFactory = engine => engine === 'xetex' ? new Worker('/compiler/native-worker.js?v=startup-4') : createPdftexWorker();
 
 export class LatexCompiler {
   constructor({ workerFactory = defaultWorkerFactory, timeout = 60000, loadTimeout = 300000, idleTimeout = 60000, fontLoader = new GoogleFontLoader() } = {}) {
