@@ -35,6 +35,9 @@ test('Projects dashboard searches, sorts, switches views and opens a persistent 
 });
 
 test('local and account documents share one newest-first list with location icons', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => latex.ready());
+  await page.evaluate(() => latex.rename('Device paper'));
   const cloudOnly = { id: 'cloud-only', code: 'Cloud123', title: 'Cloud only', updated_at: Date.now() + 120000 };
   let shared;
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
@@ -49,7 +52,7 @@ test('local and account documents share one newest-first list with location icon
   await page.goto('/');
   const projects = page.getByRole('list', { name: 'Projects' });
   await expect(projects).toContainText('Cloud only');
-  await projects.getByRole('button').filter({ hasText: 'Untitled paper' }).click();
+  await projects.getByRole('button').filter({ hasText: 'Device paper' }).click();
   await editorReady(page);
   await page.getByRole('textbox', { name: 'Document title' }).fill('Shared paper');
   await page.getByRole('button', { name: 'Save to account' }).click();

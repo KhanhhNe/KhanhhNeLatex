@@ -6,11 +6,18 @@ import { editorReady } from './source-editor.js';
 const longTitle = 'Research notes on typography and accessible document navigation with a very long descriptive title';
 
 test('an unavailable last-edited date does not prevent opening the workspace', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => latex.ready());
+  await page.evaluate(() => latex.rename('Device paper'));
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', route => route.fulfill({
     json: { documents: [{ id: 'undated', title: 'Undated account document' }] },
   }));
+  await page.route('**/api/documents/sync', route => route.fulfill({
+    json: { document: { ...route.request().postDataJSON(), id: 'device-cloud', revision: 1 } },
+  }));
   await page.goto('/#workspace');
+  await page.reload();
   await editorReady(page);
   const card = page.locator('.document-row').filter({ hasText: 'Undated account document' });
   await expect(card).toContainText('Date unavailable');
