@@ -69,6 +69,7 @@ function App() {
   const [engineState, setEngineState] = useState('Preparing browser engine...');
   const [menu, setMenu] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [logShown, setLogShown] = useState(false);
   const menuDialog = useRef(null);
   const moreButton = useRef(null);
@@ -1074,6 +1075,14 @@ function App() {
       action();
     };
   }
+  async function copyPrivateLink() {
+    try {
+      await navigator.clipboard.writeText(new URL(documentPath(active.current), location.origin).href);
+      setLinkCopied(true);
+    } catch {
+      notice(new Error('Could not copy the private link. Check browser clipboard permissions and copy the address manually.'));
+    }
+  }
   async function signOut() {
     try {
       await persist();
@@ -1202,9 +1211,10 @@ function App() {
                 </div>
               </>}
             </>}
-            {mobile && <button ref={moreButton} className="more-button" aria-label="More actions" title="More actions" aria-haspopup="dialog" aria-expanded={menu} aria-controls="workspace-menu" onClick={() => setMenu(true)}><Icon name="more" /></button>}
+            {mobile && <button ref={moreButton} className="more-button" aria-label="More actions" title="More actions" aria-haspopup="dialog" aria-expanded={menu} aria-controls="workspace-menu" onClick={() => { setLinkCopied(false); setMenu(true); }}><Icon name="more" /></button>}
           </div>
         </div>
+        {mobile && chromeHidden && <button className="show-controls" aria-label="Show reading controls" title="Show controls" onClick={() => setChromeHidden(false)}><Icon name="eye" /></button>}
         <div className="panels" ref={sizing.panels}>
           <section id="source-panel" className={`editor-panel ${tab === 'source' ? 'mobile-active' : ''}`} aria-label="LaTeX source editor">
             <div className="editor-container">
@@ -1264,19 +1274,21 @@ function App() {
         <div className="action-sheet-items">
           <button onClick={fromMenu(() => setSidebar(true))} aria-controls="document-sidebar"><Icon name="panel" />Documents</button>
           <button onClick={fromMenu(() => newDocument())}><Icon name="plus" />New document</button>
+          <button onClick={fromMenu(() => fileInput.current.click())}><Icon name="upload" />Import .tex file</button>
           <button onClick={fromMenu(exportTex)} disabled={!current}><Icon name="download" />Export .tex</button>
           <button onClick={fromMenu(exportPdf)} disabled={!pdf}><Icon name="download" />Export PDF</button>
           {pdf ? <a href={pdf.url} target="_blank" rel="noopener" onClick={() => menuDialog.current?.close()}><Icon name="external" />Open PDF</a>
             : <button disabled><Icon name="external" />Open PDF</button>}
           <button onClick={fromMenu(sync)} disabled={!current}><Icon name="cloud" />Save to account</button>
           <button onClick={fromMenu(() => setSharing(true))} disabled={!current}><Icon name="external" />Share read-only link</button>
+          <button onClick={copyPrivateLink} disabled={!current}><Icon name={linkCopied ? 'check' : 'link'} />{linkCopied ? 'Link copied' : 'Copy private link'}</button>
           <label className="action-sheet-toggle"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} />Live preview</label>
           <button onClick={fromMenu(() => { setTab('preview'); setLogShown(true); })}><Icon name="terminal" />Compilation log</button>
           <button onClick={fromMenu(() => setShowHelp(true))}><Icon name="help" />Help</button>
           {user ? <button onClick={fromMenu(signOut)}><Icon name="user" />Sign out {user.username}</button>
             : <button onClick={fromMenu(() => setAuth('login'))}><Icon name="user" />Sign in</button>}
         </div>
-        <p className="action-sheet-status"><span>{compileState}</span><span>{engineState}</span></p>
+        <p className="action-sheet-status"><span>{compileState}</span><span>{engineState}</span><span role="status" aria-live="polite">{linkCopied ? 'Private link copied to clipboard.' : ''}</span></p>
       </div>
     </dialog>}
     {auth && <AuthDialog mode={auth} setMode={setAuth} onClose={() => setAuth(null)} onSuccess={async signedIn => {
@@ -1328,7 +1340,7 @@ function HelpDialog({ onClose }) {
   return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
       <section ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="help-title"><button className="modal-close" aria-label="Close help" onClick={onClose}><Icon name="close" /></button>
         <h2 id="help-title">Workspace help</h2>
-        <p>On mobile, documents open in Read mode. Export PDF or Export .tex while reading; Open PDF uses your browser's native viewer for text selection, search and accessibility. Switch to Edit for small source or title changes and account saving. Compile &amp; read returns to the PDF after a successful compile; failed or cancelled compilations keep the last good preview. Live preview is available in Edit. The enhanced editor loads only when needed.</p>
+        <p>On mobile, documents open in Read mode. Export PDF or Export .tex while reading; Open PDF uses your browser's native viewer for text selection, search and accessibility. Copy private link is in More actions; account links require the owner's sign-in and do not enable public sharing. Switch to Edit for small source or title changes and account saving. Compile &amp; read returns to the PDF after a successful compile; failed or cancelled compilations keep the last good preview. Live preview is available in Edit. The enhanced editor loads only when needed.</p>
         <p>Each document is one UTF-8 .tex file, up to 100,000 characters. Images, binary files and external source assets are not supported.</p>
         <p>The default bundled pdfTeX engine supports article, report, book, amsmath, amssymb, geometry and standard Computer Modern fonts. No shell escape, bibliography uploads, font uploads, or automatic package downloads. Full Unicode and every CTAN package are not supported.</p>
         <p>For Google Fonts, use <code>{String.raw`\usepackage{fontspec}\setmainfont[BoldFont={Roboto Bold}]{Roboto}`}</code> and <code>{String.raw`\newfontfamily\crimson{Crimson Pro}`}</code> (then <code>{String.raw`{\crimson Your text}`}</code>). Generic Google names and simple top-level literal font-name macros work. Options may precede or follow the family: UprightFont, BoldFont, ItalicFont, BoldItalicFont, and documented safe features such as Scale, Ligatures, Numbers and LetterSpace. Weight suffixes Thin through Black and Italic are supported. Conventional virtual filenames such as Roboto-Regular.ttf or CrimsonPro-Regular.ttf may use literal Path=fonts/; these resolve Google family/style names, not local files or guaranteed historical font versions. RawFeature supports signed kern, liga and clig switches. Other paths, URLs, computed/local/conditional macros and unlisted options are rejected. Native compilation includes basic xcolor/TikZ drawing and Hyperref support, not arbitrary optional libraries. See README for exact feature values and parser limits.</p>

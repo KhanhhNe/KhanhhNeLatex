@@ -283,6 +283,7 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
   .workspace-view .document-actions{flex:none;flex-wrap:nowrap;gap:0}
   .workspace-view .document-actions .compile-button{min-width:44px;padding:6px 10px}
   .workspace-view .more-button{padding:0}
+  .workspace-view .show-controls{position:absolute;top:max(4px,env(safe-area-inset-top));right:max(8px,env(safe-area-inset-right));z-index:6;padding:0;border:1px solid #53616b;border-radius:50%;background:#232a30eb;color:#e3edf3;box-shadow:0 2px 12px #0007}
   .workspace-view.reading .document-toolbar{position:absolute;top:0;left:0;right:0;z-index:4;transition:transform .2s ease}
   .workspace-view.reading.chrome-hidden .document-toolbar{transform:translateY(-100%)}
   .workspace-view.reading .pdf-viewport{padding-top:48px}
