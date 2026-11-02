@@ -19,6 +19,9 @@ const paths = {
   grid: 'M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h6v6h-6z',
   external: 'M14 4h6v6 M20 4l-9 9 M18 14v6H4V6h6',
   terminal: 'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h3',
+  link: 'M10 13a5 5 0 0 0 7.07 0l3-3A5 5 0 0 0 13 2.93l-1.72 1.71 M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21.07l1.71-1.71',
+  check: 'm5 12 4 4L19 6',
+  eye: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z',
 };
 
 export default function Icon({ name, className = '' }) {

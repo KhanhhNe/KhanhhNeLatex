@@ -108,6 +108,8 @@ for (const browserType of [chromium, webkit]) {
         const more = page.getByRole('button', { name: 'More actions' });
         await more.click();
         await expect(more).toHaveAttribute('aria-expanded', 'true');
+        await reachable(page.locator('#workspace-menu').getByRole('button', { name: 'Import .tex file', exact: true }), page);
+        await reachable(page.locator('#workspace-menu').getByRole('button', { name: 'Copy private link', exact: true }), page);
         await touchTargets(page);
         await page.keyboard.press('Escape');
         await expect(page.getByRole('button', { name: 'Close menu' })).toBeHidden();
