@@ -149,7 +149,7 @@ export const API_METHODS = [
   ['open(ref, { account? })', 'Open/switch by id, cloudId, 8-character permalink code or /documents/... URL, list key or exact title. account: synchronize with the same account document. Text merges through CRDT history; legacy replaceDraft options never discard device edits.', 'await latex.open("Alpha paper")'],
   ['create({ title?, source? })', 'Create a new device document and open it.', 'await latex.create({ title: "Notes" })'],
   ['rename(title)', 'Rename the current document.', 'await latex.rename("Final draft")'],
-  ['remove(ref?, { confirm: true })', 'Delete a document from this device and, if linked, your account. confirm: true is required.', 'await latex.remove(undefined, { confirm: true })'],
+  ['remove(ref?, { confirm: true })', 'Delete a document after pending saves and account deletion finish, without blocking other documents. confirm: true is required.', 'await latex.remove(undefined, { confirm: true })'],
   ['read({ from?, to?, numbered? })', 'Read the full source or a 1-based inclusive line range.', 'latex.read({ from: 1, to: 20, numbered: true })'],
   ['find(query, { regex?, caseSensitive? })', 'Find matches with line/column/offset and the line text.', 'latex.find("\\\\section")'],
   ['setSource(text)', 'Replace the whole source through the editor (undoable, autosaved).', 'latex.setSource("\\\\documentclass{article}...")'],
@@ -224,6 +224,12 @@ export function createAgentApi(getBridge) {
     };
   };
   const permalink = item => validDocumentCode(item.code) ? documentPath(item) : null;
+  const documentView = document => document ? {
+    id: document.id, cloudId: document.cloudId || null, code: document.code || null, url: permalink(document),
+    title: document.title, dirty: Boolean(document.dirty),
+    updatedAt: document.updated_at, length: document.source.length, lines: lineList(document.source).length,
+    revision: document.revision ?? null,
+  } : null;
   const resolveDocument = ref => {
     const list = bridge().documents();
     if (ref === undefined || ref === null) return list.find(item => item.current) || null;
@@ -274,14 +280,7 @@ export function createAgentApi(getBridge) {
       }));
     },
     current() {
-      const active = bridge().active();
-      if (!active) return null;
-      return {
-        id: active.id, cloudId: active.cloudId || null, code: active.code || null, url: permalink(active),
-        title: active.title, dirty: Boolean(active.dirty),
-        updatedAt: active.updated_at, length: active.source.length, lines: lineList(active.source).length,
-        revision: active.revision ?? null,
-      };
+      return documentView(bridge().active());
     },
     async open(ref, { account = false, replaceDraft = false } = {}) {
       await bridge().loaded();
@@ -300,8 +299,9 @@ export function createAgentApi(getBridge) {
       if (typeof title !== 'string' || !title.trim() || title.length > 100) throw new Error('title must be 1-100 characters.');
       if (text !== undefined) validateSource(text);
       const before = bridge().active();
-      await bridge().create(text, title.trim());
+      const created = await bridge().create(text, title.trim());
       await bridge().rendered();
+      if (created) return documentView(created);
       if (bridge().active() === before) throw new Error(bridge().lastError() || 'The document could not be created.');
       return api.current();
     },
@@ -317,8 +317,7 @@ export function createAgentApi(getBridge) {
       const item = resolveDocument(ref);
       if (!item) throw new Error('No document is open.');
       if (!item.localAvailable) throw new Error('Open this account document first, then remove it.');
-      if (!item.current) await api.open(item.id);
-      const ok = await bridge().remove();
+      const ok = await bridge().remove(item);
       await bridge().rendered();
       if (!ok) throw new Error(bridge().lastError() || 'The document could not be deleted.');
       return { removed: item.id, current: api.current() };

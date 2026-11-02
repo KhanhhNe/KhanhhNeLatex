@@ -98,3 +98,20 @@ test('edits go through the bridge, normalize line endings and emit subscribed ev
   assert.throws(() => api.setSource('x'.repeat(100001)), RangeError);
   await assert.rejects(api.remove(undefined), /confirm: true/);
 });
+
+test('concurrent creates return their own identities and removing another document does not switch', async () => {
+  const active = { id: 'active', title: 'Active', source: 'current' };
+  const removed = [];
+  const { api } = createAgentApi(() => ({
+    loaded: async () => {}, rendered: async () => {},
+    active: () => active,
+    create: async (source, title) => ({ id: title, title, source }),
+    documents: () => [active, { id: 'other', title: 'Other', source: 'other' }].map(item => ({ ...item, localAvailable: true })),
+    remove: async item => { removed.push(item.id); return true; },
+  }));
+  const created = await Promise.all(['One', 'Two', 'Three'].map(title => api.create({ title, source: title })));
+  assert.deepEqual(created.map(item => item.id), ['One', 'Two', 'Three']);
+  const result = await api.remove('other', { confirm: true });
+  assert.deepEqual(removed, ['other']);
+  assert.equal(result.current.id, active.id);
+});

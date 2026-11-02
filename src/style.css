@@ -42,6 +42,8 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
 .document-details{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 6px 0 10px;color:#b0b0b0;font-size:.6875rem}
 .document-details .document-availability{gap:4px}
 .document-details .document-availability .ui-icon{width:13px;height:13px}
+.document-operation{padding:0 10px 6px;color:#b0b0b0;font-size:.6875rem;overflow-wrap:anywhere}
+.document-operation button{position:relative;z-index:2;min-height:44px;text-decoration:underline}
 .document-cloud-open{position:relative;z-index:2;display:grid;place-items:center;width:44px;min-width:44px;min-height:44px;padding:0;margin-left:auto;border-radius:7px;color:#a8d1c1}
 .document-cloud-open::before{content:"";position:absolute;width:28px;height:28px;border:1px solid #53665e;border-radius:6px;background:#a8d1c10a;z-index:-1}
 .document-cloud-open .ui-icon{width:16px;height:16px}

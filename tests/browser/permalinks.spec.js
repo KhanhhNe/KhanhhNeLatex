@@ -83,10 +83,10 @@ test('legacy device drafts receive persistent codes without changing their sourc
 
 test('a delayed account save does not navigate away from projects', async ({ page }) => {
   let finishSave;
-  let refreshed = false;
+  let listRequests = 0;
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', async route => {
-    if (finishSave) refreshed = true;
+    listRequests++;
     return route.fulfill({ json: { documents: [] } });
   });
   await page.route('**/api/documents/sync', async route => {
@@ -99,7 +99,8 @@ test('a delayed account save does not navigate away from projects', async ({ pag
   await expect.poll(() => Boolean(finishSave)).toBe(true);
   await page.getByRole('button', { name: 'Your projects', exact: true }).click();
   finishSave();
-  await expect.poll(() => refreshed).toBe(true);
+  await expect.poll(() => page.evaluate(() => latex.current()?.cloudId)).toBe('cloud');
+  expect(listRequests).toBe(1);
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
 });
