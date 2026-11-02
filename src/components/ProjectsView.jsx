@@ -3,7 +3,7 @@ import './ProjectsView.css';
 import Icon from './Icon.jsx';
 import DocumentAvailability from './DocumentAvailability.jsx';
 
-export default function ProjectsView({ documents, onOpen, onNew, onImport, onSignIn, username, onHelp }) {
+export default function ProjectsView({ documents, onOpen, onNew, onImport, onSignIn, username, onHelp, onRetryDelete }) {
   const [query, setQuery] = useState('');
   const [grid, setGrid] = useState(false);
   const [sort, setSort] = useState('edited');
@@ -45,7 +45,9 @@ export default function ProjectsView({ documents, onOpen, onNew, onImport, onSig
                 localAvailable={document.localAvailable} cloudAvailable={document.cloudAvailable} /></small></span>
               <time dateTime={new Date(document.updated_at).toISOString()}>{new Date(document.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</time>
             </button>
-          </div></li>)}</ul> : <div className="projects-empty">
+          </div>{document.operation && <div className="document-operation"><span role="status">{document.operation}</span>
+            {document.deleteFailed && <button onClick={() => onRetryDelete(document)}>Retry delete</button>}
+          </div>}</li>)}</ul> : <div className="projects-empty">
           <h2>{query ? 'No matching documents' : 'Make room for your next idea'}</h2>
           <p>{query ? 'Try another name or start a new document.' : 'Begin with a local LaTeX document.'}</p>
           <button className="projects-new" onClick={onNew}>Start writing</button>

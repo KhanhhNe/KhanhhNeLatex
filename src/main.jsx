@@ -15,6 +15,7 @@ import { documentPath, documentRoute, newDocumentCode, validDocumentCode } from 
 import { API_METHODS, createAgentApi } from './agent-api.js';
 import { createText, editText, encodeState, mergeText } from './crdt.js';
 import { starter, starterTitle, skipDefault } from './starter.js';
+import { DocumentQueue } from './document-queue.js';
 import './style.css';
 
 const makeDraft = (source = starter, title = starterTitle, defaultDocument = false) => ({
@@ -28,7 +29,7 @@ function samePdf(first, second) {
 }
 
 function App() {
-  const [documents, setDocuments] = useState([]);
+  const [documents, renderDocuments] = useState([]);
   const [current, setCurrent] = useState(null);
   const [user, setUser] = useState(null);
   const [cloud, setCloud] = useState([]);
@@ -40,7 +41,10 @@ function App() {
   const [routeVersion, setRouteVersion] = useState(0);
   const [routeError, setRouteError] = useState('');
   const localDocuments = useRef(documents);
-  localDocuments.current = documents;
+  function setDocuments(value) {
+    localDocuments.current = typeof value === 'function' ? value(localDocuments.current) : value;
+    renderDocuments(localDocuments.current);
+  }
   const visibleView = useRef(view);
   visibleView.current = view;
   const [desktopSidebarHidden, setDesktopSidebarHidden] = useState(() => {
@@ -49,7 +53,6 @@ function App() {
   });
   const sizing = useWorkspaceResize(view === 'workspace', desktopSidebarHidden);
   const [auth, setAuth] = useState(null);
-  const [busy, setBusy] = useState(false);
   const [compiling, setCompiling] = useState(false);
   const [compileState, setCompileState] = useState('Ready when you are');
   const [log, setLog] = useState('');
@@ -97,11 +100,16 @@ function App() {
   const cloudTimings = useRef(new Map());
   const cloudTimers = useRef(new Map());
   const cloudSnapshots = useRef(new Map());
-  const cloudQueue = useRef(new Map());
-  const cloudSaving = useRef(false);
+  const cloudQueue = useRef(new DocumentQueue());
+  const deletions = useRef(new Map());
+  const [documentWork, setDocumentWork] = useState(new Map());
+  const [syncError, setSyncError] = useState('');
+  const [retrying, setRetrying] = useState(false);
   const account = useRef(null);
   const cloudRequest = useRef(0);
   const cloudMetadata = useRef(new Map());
+  const cloudAttempts = useRef(new Map());
+  const cloudCompleted = useRef(new Map());
   const textReplica = useRef(null);
   const localLoaded = useRef(Promise.resolve());
   const reconciliation = useRef(Promise.resolve());
@@ -234,6 +242,7 @@ function App() {
   async function persist(document = active.current) {
     if (!document) return;
     if (discardedDefaults.current.has(document.id)) return;
+    if (deletions.current.get(document.id)?.status === 'deleted') return null;
     if (document === active.current) clearTimeout(timer.current);
     if (persisted.current.has(document)) return;
     if (document === active.current) pending.current = true;
@@ -244,15 +253,17 @@ function App() {
       saving.current = work;
       let saved = await work;
       if (!saved || discardedDefaults.current.has(document.id)) return;
+      if (deletions.current.get(document.id)?.status === 'deleted') return null;
       localSaveMs.current = performance.now() - started;
       emit('save', { documentId: document.id, local: true, cloud: false });
       let raced = false;
       if (active.current?.id === document.id) {
         const latest = active.current;
         const merged = mergeText(saved, materialize(latest));
-        raced = merged.crdt_state !== saved.crdt_state || latest.title !== saved.title
-          || latest.owner !== saved.owner || latest.cloudId !== saved.cloudId || latest.revision !== saved.revision;
-        saved = { ...saved, ...latest, ...merged, dirty: raced || saved.dirty || latest.dirty };
+        raced = merged.crdt_state !== saved.crdt_state || latest.title !== saved.title;
+        saved = { ...saved, ...latest, ...merged, owner: saved.owner || latest.owner,
+          cloudId: saved.cloudId || latest.cloudId,
+          revision: saved.revision ?? latest.revision, dirty: raced || saved.dirty || latest.dirty };
       }
       if (active.current?.id === document.id) {
         activate(saved);
@@ -283,7 +294,7 @@ function App() {
     do {
       snapshot = active.current;
       await persist(snapshot);
-    } while (active.current && !persisted.current.has(active.current));
+    } while (active.current && deletions.current.get(active.current.id)?.status !== 'deleted' && !persisted.current.has(active.current));
   }
   function update(patch, changes, before) {
     if ('source' in patch) {
@@ -310,6 +321,7 @@ function App() {
     }
   }
   async function select(document, force = false, navigation = 'push') {
+    if (!document || deletions.current.get(document.id)?.status === 'deleted') return;
     const selection = ++selectionRequest.current;
     if (!force && document.id === active.current?.id) {
       scheduleCloud(active.current);
@@ -321,7 +333,7 @@ function App() {
     }
     try {
       await flush();
-      if (selection !== selectionRequest.current) return;
+      if (selection !== selectionRequest.current || deletions.current.get(document.id)?.status === 'deleted') return;
       showWorkspace(document, navigation);
       setTab('preview');
       clearTimeout(liveTimer.current);
@@ -358,10 +370,19 @@ function App() {
     }
   }
   async function newDocument(source, title) {
+    try { await flush(); }
+    catch (reason) { notice(reason); return; }
     const document = makeDraft(source, title);
-    document.code = newDocumentCode(new Set(documents.map(item => item.code)));
+    document.code = newDocumentCode(new Set(localDocuments.current.map(item => item.code)));
+    // Persist each creation even if another click supersedes its selection.
+    setDocuments(list => [document, ...list]);
+    cloudSnapshots.current.set(document.id, document);
+    const stored = persist(document);
     try { await select(document); }
     catch (reason) { notice(reason); }
+    await stored;
+    scheduleCloud(cloudSnapshots.current.get(document.id) || document);
+    return cloudSnapshots.current.get(document.id) || document;
   }
   function refreshCloud(owner = account.current, reconcile = true) {
     const work = loadCloud(owner, reconcile);
@@ -374,7 +395,8 @@ function App() {
     const data = await api('/documents');
     if (request !== cloudRequest.current || account.current?.id !== owner.id) return;
     cloudMetadata.current = new Map(data.documents.map(document => [document.id, document]));
-    setCloud(data.documents);
+    setCloud(data.documents.filter(document => ![...deletions.current.values()]
+      .some(item => item.status === 'deleted' && item.code === document.code)));
     if (reconcile) {
       await localLoaded.current;
       await flush();
@@ -382,6 +404,7 @@ function App() {
       if (account.current?.id !== owner.id) return;
       for (let document of list) {
         document = active.current?.id === document.id ? materialize(active.current) : document;
+        if (deletions.current.has(document.id)) continue;
         if (document.owner && document.owner !== owner.id) continue;
         if (skipDefault(document, data.documents)) {
           const route = documentRoute(location.pathname);
@@ -399,7 +422,6 @@ function App() {
             cloudTimers.current.delete(document.id);
             cloudSnapshots.current.delete(document.id);
             setDocuments(items => items.filter(item => item.id !== document.id));
-            localDocuments.current = localDocuments.current.filter(item => item.id !== document.id);
             if (active.current?.id === document.id) {
               clearTimeout(timer.current);
               active.current = null;
@@ -486,7 +508,7 @@ function App() {
             scheduleCloud(next);
           }
         }
-        setDocuments(list);
+        setDocuments(list.filter(item => deletions.current.get(item.id)?.status !== 'deleted'));
       } catch (reason) { notice(reason); }
     };
     window.addEventListener('beforeunload', unload);
@@ -668,6 +690,7 @@ function App() {
     }
   }
   function scheduleCloud(document) {
+    if (!document || deletions.current.has(document.id)) return;
     cloudSnapshots.current.set(document.id, document);
     clearTimeout(cloudTimers.current.get(document.id));
     if (!navigator.onLine || !account.current || (document.owner && document.owner !== account.current.id)) return;
@@ -685,6 +708,7 @@ function App() {
     if (snapshot && discardedDefaults.current.has(snapshot.id))
       return { ok: true, skipped: true, documentId: snapshot.id };
     if (!snapshot) return { ok: false, error: 'No document is open.' };
+    if (deletions.current.has(snapshot.id)) return { ok: false, error: 'This document has a pending deletion.' };
     const owner = account.current;
     if (!owner) { if (!automatic) setAuth('login'); return { ok: false, error: 'Sign in to save to your account.' }; }
     if (snapshot.owner && snapshot.owner !== owner.id) {
@@ -697,19 +721,21 @@ function App() {
     }
     clearTimeout(cloudTimers.current.get(snapshot.id));
     cloudTimers.current.delete(snapshot.id);
-    if (cloudSaving.current) {
-      return new Promise(resolve => {
-        const queued = cloudQueue.current.get(snapshot.id);
-        cloudQueue.current.set(snapshot.id, { snapshot, automatic, waiters: [...(queued?.waiters || []), resolve] });
-      });
-    }
-    let outcome;
-    cloudSaving.current = true;
     cloudSnapshots.current.set(snapshot.id, snapshot);
-    if (!automatic) setBusy(true);
-    setError('');
+    setDocumentWork(work => new Map(work).set(snapshot.id, 'Saving...'));
+    const version = cloudCompleted.current.get(snapshot.id)?.version || 0;
+    return cloudQueue.current.run(snapshot.id, () => syncDocument(snapshot.id, owner, version));
+  }
+  async function syncDocument(id, owner, version) {
+    let snapshot = cloudSnapshots.current.get(id);
+    if (!snapshot || deletions.current.has(id)) return { ok: true, deleted: true };
+    let outcome;
     let localSaved = false;
+    setDocumentWork(work => new Map(work).set(id, 'Saving...'));
     try {
+      if (account.current?.id !== owner.id) throw new Error('The signed-in account changed. Retry synchronization.');
+      const completed = cloudCompleted.current.get(id);
+      if (completed && completed.version !== version && !snapshot.dirty) return completed.outcome;
       if (snapshot.cloudId && snapshot.owner === owner.id) {
         let remote = cloudMetadata.current.get(snapshot.cloudId);
         if (!remote) remote = (await api(`/documents/${snapshot.cloudId}`)).document;
@@ -722,47 +748,55 @@ function App() {
         }
       }
       snapshot = await persist(snapshot) || materialize(snapshot);
+      if (account.current?.id !== owner.id) return { ok: false, error: 'The signed-in account changed. Retry synchronization.' };
       localSaved = true;
       if (active.current?.id === snapshot.id) setSaveState('Saving to your account...');
       const started = performance.now();
+      cloudAttempts.current.set(id, owner.id);
       const { document: saved } = await api('/documents/sync', {
         code: snapshot.code, title: snapshot.title || 'Untitled paper',
         source: snapshot.source, crdt_state: snapshot.crdt_state,
       });
       if (!validDocumentCode(saved.code) || saved.code !== snapshot.code)
         throw new Error('The account response has a different document identity. Your device draft is kept.');
+      cloudAttempts.current.delete(id);
       const roundTripMs = performance.now() - started;
       cloudTimings.current.set(snapshot.id, roundTripMs);
       const latest = active.current?.id === snapshot.id ? active.current : cloudSnapshots.current.get(snapshot.id);
       const merged = mergeText(materialize(latest || snapshot), saved);
-      const next = { ...latest, ...merged, cloudId: saved.id, owner: owner.id, revision: saved.revision,
+      const next = { ...(latest || snapshot), ...merged, cloudId: saved.id, owner: owner.id, revision: saved.revision,
         dirty: merged.crdt_state !== saved.crdt_state };
       cloudSnapshots.current.set(next.id, next);
-      if (active.current?.id === next.id) {
+      if (active.current?.id === next.id && account.current?.id === owner.id) {
         activate(next);
         if (visibleView.current === 'workspace') showWorkspace(next, 'replace');
       }
       await persist(next);
-      if (account.current?.id === owner.id) await refreshCloud(owner, false);
-      if (next.dirty && account.current?.id === owner.id) scheduleCloud(next);
-      outcome = { ok: true, documentId: next.id, cloudId: next.cloudId, revision: next.revision, roundTripMs, dirty: next.dirty };
+      const pendingNext = cloudSnapshots.current.get(id) || next;
+      const metadata = { id: saved.id, code: saved.code, title: saved.title, revision: saved.revision, updated_at: saved.updated_at };
+      cloudMetadata.current.set(saved.id, metadata);
+      if (account.current?.id === owner.id)
+        setCloud(list => [metadata, ...list.filter(item => item.id !== saved.id)]);
+      if (pendingNext.dirty && account.current?.id === owner.id) scheduleCloud(pendingNext);
+      else {
+        clearTimeout(cloudTimers.current.get(next.id));
+        cloudTimers.current.delete(next.id);
+      }
+      outcome = { ok: true, documentId: next.id, cloudId: next.cloudId, revision: next.revision, roundTripMs, dirty: pendingNext.dirty };
+      cloudCompleted.current.set(id, { version: (completed?.version || 0) + 1, outcome });
       emit('save', { ...outcome, local: true, cloud: true });
     } catch (reason) {
-      notice(reason);
+      setSyncError(`Account sync paused: ${reason.message}`);
+      lastError.current = reason.message;
+      emit('error', { message: reason.message });
       if (localSaved && active.current?.id === snapshot.id) setSaveState('Cloud save failed - device draft kept');
       outcome = { ok: false, documentId: snapshot.id, error: reason instanceof Error ? reason.message : String(reason) };
-    }
-    finally {
-      cloudSaving.current = false;
-      if (!automatic) setBusy(false);
-      const queued = cloudQueue.current.entries().next().value;
-      if (queued) {
-        const [id, request] = queued;
-        cloudQueue.current.delete(id);
-        const latest = cloudSnapshots.current.get(id) || request.snapshot;
-        const settle = result => { for (const waiter of request.waiters) waiter(result); };
-        sync({ automatic: request.automatic, snapshot: latest }).then(settle);
-      }
+    } finally {
+      setDocumentWork(work => {
+        const next = new Map(work);
+        if (!deletions.current.has(id)) next.delete(id);
+        return next;
+      });
     }
     return outcome;
   }
@@ -772,6 +806,7 @@ function App() {
     try {
       const document = fetched || (await api(`/documents/${item.id}`)).document;
       if (request !== selectionRequest.current || account.current?.id !== owner) return;
+      if ([...deletions.current.values()].some(item => item.status === 'deleted' && item.code === document.code)) return;
       const eligible = doc => (!doc.owner || doc.owner === account.current?.id)
         && (doc.code === document.code || doc.cloudId === item.id);
       const local = active.current && eligible(active.current) ? active.current : localDocuments.current.find(eligible);
@@ -781,32 +816,81 @@ function App() {
       await select(next, true);
     } catch (reason) { notice(reason); }
   }
-  async function remove({ confirmed = false } = {}) {
-    if (cloudSaving.current) { notice(new Error('Wait for the account save to finish before deleting this document.')); return false; }
-    const snapshot = active.current;
-    if (!snapshot || !(confirmed === true || window.confirm(`Delete "${snapshot.title}"${snapshot.cloudId ? ' from this device and your account' : ''}? This cannot be undone.`))) return false;
+  async function remove({ confirmed = false, snapshot = active.current } = {}) {
+    if (!snapshot) return false;
+    const previous = deletions.current.get(snapshot.id);
+    if (previous?.status === 'pending') return previous.promise;
+    if (previous?.status === 'deleted') return true;
+    if (!(confirmed === true || window.confirm(`Delete "${snapshot.title}"${snapshot.cloudId ? ' from this device and your account' : ''}? This cannot be undone.`))) return false;
+    const deletion = { code: snapshot.code, status: 'pending' };
+    deletions.current.set(snapshot.id, deletion);
+    setDocumentWork(work => new Map(work).set(snapshot.id, 'Deleting...'));
     clearTimeout(cloudTimers.current.get(snapshot.id));
     cloudTimers.current.delete(snapshot.id);
-    cloudQueue.current.delete(snapshot.id);
-    cloudSnapshots.current.delete(snapshot.id);
-    setBusy(true);
-    try {
-      await persist();
-      if (snapshot.cloudId) {
-        if (snapshot.owner !== user?.id) throw new Error('Sign in to the document owner account before deleting this synced draft.');
-        await api(`/documents/${snapshot.cloudId}`, undefined, 'DELETE');
-        await refreshCloud(user, false);
+    deletion.promise = cloudQueue.current.run(snapshot.id, async () => {
+      try {
+        await saving.current.catch(() => {});
+        let latest = cloudSnapshots.current.get(snapshot.id) || snapshot;
+        await persist(active.current?.id === snapshot.id ? active.current : latest);
+        const attemptedOwner = cloudAttempts.current.get(snapshot.id);
+        if (!latest.cloudId && attemptedOwner) {
+          if (account.current?.id !== attemptedOwner)
+            throw new Error('Sign in to the document owner account, then retry deletion.');
+          // A failed response may still have created the account document.
+          try {
+            const { document } = await api(`/documents/by-code/${latest.code}`);
+            latest = { ...latest, cloudId: document.id, owner: attemptedOwner };
+          } catch (reason) { if (reason.status !== 404) throw reason; }
+        }
+        if (latest.cloudId) {
+          if (latest.owner !== account.current?.id)
+            throw new Error('Sign in to the document owner account, then retry deletion.');
+          try { await api(`/documents/${latest.cloudId}`, undefined, 'DELETE'); }
+          catch (reason) { if (reason.status !== 404) throw reason; }
+        }
+        // Only remove the draft after the account confirms; late local writes cannot restore it.
+        deletion.status = 'deleted';
+        if (active.current?.id === snapshot.id) clearTimeout(timer.current);
+        await saving.current.catch(() => {});
+        await drafts.delete(snapshot.id);
+        cloudSnapshots.current.delete(snapshot.id);
+        cloudTimings.current.delete(snapshot.id);
+        cloudAttempts.current.delete(snapshot.id);
+        cloudCompleted.current.delete(snapshot.id);
+        const list = localDocuments.current.filter(doc => doc.id !== snapshot.id);
+        setDocuments(list);
+        setCloud(items => items.filter(item => item.id !== latest.cloudId));
+        if (active.current?.id === snapshot.id) {
+          pending.current = false;
+          active.current = null;
+          const next = list[0] || makeDraft();
+          if (!list.length) setDocuments([next]);
+          await select(next, true, 'replace');
+        }
+        setDocumentWork(work => { const next = new Map(work); next.delete(snapshot.id); return next; });
+        draftChannel.current?.postMessage({ id: snapshot.id });
+        return { ok: true, deleted: true };
+      } catch (reason) {
+        deletion.status = 'failed';
+        lastError.current = reason.message;
+        emit('error', { message: reason.message });
+        setSyncError(`Account deletion paused: ${reason.message}`);
+        setDocumentWork(work => new Map(work).set(snapshot.id, `Delete failed: ${reason.message}`));
+        return { ok: false, error: reason.message };
       }
-      await drafts.delete(snapshot.id);
-      const list = documents.filter(doc => doc.id !== snapshot.id);
-      const next = list[0] || makeDraft();
-      if (!list.length) await drafts.put(next);
-      active.current = null;
-      setDocuments(list.length ? list : [next]);
-      await select(next);
-      return true;
-    } catch (reason) { notice(reason); return false; }
-    finally { setBusy(false); }
+    }).then(result => result.ok);
+    return deletion.promise;
+  }
+  async function retrySync() {
+    setRetrying(true);
+    setSyncError('');
+    try {
+      const failed = [...deletions.current.entries()].filter(([, item]) => item.status === 'failed');
+      await Promise.all(failed.map(([id]) => remove({ confirmed: true, snapshot: localDocuments.current.find(item => item.id === id) })));
+      await refreshCloud();
+    }
+    catch (reason) { setSyncError(`Account sync paused: ${reason.message}`); }
+    finally { setRetrying(false); }
   }
   async function importFile(event) {
     const file = event.target.files?.[0];
@@ -817,7 +901,9 @@ function App() {
   }
   const actions = useRef({});
   actions.current = { compile, sync, modal: Boolean(auth || showHelp) };
-  const unifiedDocuments = mergeDocuments(documents, cloud, user?.id);
+  const unifiedDocuments = mergeDocuments(documents, cloud, user?.id).map(document => ({
+    ...document, operation: documentWork.get(document.id), deleteFailed: deletions.current.get(document.id)?.status === 'failed',
+  }));
   function openDocument(document) {
     if (!document.localAvailable) return openCloud(document.cloudItem);
     if (document.cloudItem && navigator.onLine) {
@@ -838,7 +924,7 @@ function App() {
     loaded: () => loaded.current.promise,
     rendered: () => new Promise(resolve => { renderWaiters.current.push(resolve); setTimeout(resolve, 100); }),
     active: () => active.current,
-    state: () => ({ view, tab, user, saveState, compileState, engineState, live, busy, error, log }),
+    state: () => ({ view, tab, user, saveState, compileState, engineState, live, busy: false, error: error || syncError, log }),
     documents: () => unifiedDocuments.map(item => ({ ...item, current: item.localAvailable && item.id === active.current?.id })),
     open: async (item, { account: fromAccount }) => {
       lastError.current = '';
@@ -852,7 +938,10 @@ function App() {
       if (titleInput.current) titleInput.current.value = title;
       await persist();
     },
-    remove: () => { lastError.current = ''; return remove({ confirmed: true }); },
+    remove: item => {
+      lastError.current = '';
+      return remove({ confirmed: true, snapshot: localDocuments.current.find(document => document.id === item.id) });
+    },
     applySource,
     history: kind => {
       const handle = editorApi.current;
@@ -1009,6 +1098,7 @@ function App() {
   return <div className="app">
     <div className="app-content" inert={auth || showHelp ? true : undefined}>
     {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
+    {syncError && <div className="error-banner" role="status">{syncError}<button onClick={retrySync} disabled={retrying}>{retrying ? 'Retrying...' : 'Retry sync'}</button><button onClick={() => setSyncError('')} aria-label="Dismiss sync message">×</button></div>}
     <input ref={fileInput} type="file" accept=".tex,text/plain,application/x-tex" hidden onChange={importFile} />
     {view === 'permalink' ? <main className="projects-main">
       <h1>{routeError ? 'Document unavailable' : 'Opening document...'}</h1>
@@ -1017,6 +1107,7 @@ function App() {
       <button className="quiet" onClick={() => showProjects()}>Your projects</button>
     </main> : view === 'projects' ? <ProjectsView documents={unifiedDocuments} onOpen={openDocument}
       onNew={() => newDocument()}
+      onRetryDelete={document => remove({ confirmed: true, snapshot: document })}
       onImport={() => fileInput.current.click()} username={user?.username}
       onSignIn={() => user ? select(active.current) : setAuth('login')} onHelp={() => setShowHelp(true)} /> : <div className={`workspace-view ${tab === 'source' ? 'editing' : 'reading'}${chromeHidden ? ' chrome-hidden' : ''}`}>
     {!mobile && <header className="topbar">
@@ -1030,13 +1121,13 @@ function App() {
       <a className="brand" href="/" aria-label="KhanhhNeLatex home"><span className="brand-mark">k</span><span className="brand-name">KhanhhNeLatex</span></a>
       <div className="top-actions">
         <button className="quiet header-help" aria-label="Help" title="Help" onClick={() => setShowHelp(true)}><Icon name="help" /></button>
-        {user ? <button className="account" aria-label={`Sign out ${user.username}`} title={`Sign out ${user.username}`} disabled={busy} onClick={signOut}><Icon name="user" /><span className="account-name">{user.username}</span><span>Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}><Icon name="user" />Sign in</button>}
+        {user ? <button className="account" aria-label={`Sign out ${user.username}`} title={`Sign out ${user.username}`} onClick={signOut}><Icon name="user" /><span className="account-name">{user.username}</span><span>Sign out</span></button> : <button className="account" onClick={() => setAuth('login')}><Icon name="user" />Sign in</button>}
       </div>
     </header>}
     <div className={`workspace ${desktopSidebarHidden ? 'sidebar-hidden' : ''}`} ref={sizing.workspace}>
       <aside id="document-sidebar" ref={sidebarElement} className={`sidebar ${sidebar ? 'open' : ''}`} aria-label={mobile ? 'Documents' : undefined}>
         <div className="sidebar-heading"><span>Documents</span>{mobile ? <button className="sidebar-close" aria-label="Close documents" title="Close documents" onClick={() => setSidebar(false)}><Icon name="close" /></button> : <Icon name="panel" />}</div>
-        <button className="new-document" onClick={() => newDocument()} disabled={busy}><Icon name="plus" /><span>New document</span></button>
+        <button className="new-document" onClick={() => newDocument()}><Icon name="plus" /><span>New document</span></button>
         <nav className="document-list" aria-label="Documents">{unifiedDocuments.map(document => {
           const edited = new Date(document.updated_at);
           const hasEditedDate = Number.isFinite(edited.getTime());
@@ -1044,7 +1135,7 @@ function App() {
             <button className={`document-item ${document.localAvailable && current?.id === document.id ? 'selected' : ''}`}
               aria-label={document.title} title={document.title}
               aria-pressed={Boolean(document.localAvailable && current?.id === document.id)}
-              onClick={() => openDocument(document)} disabled={busy}>
+              onClick={() => openDocument(document)}>
               <span className="document-name">{document.title}</span>
             </button>
             <div className="document-details">
@@ -1054,11 +1145,14 @@ function App() {
                 {hasEditedDate ? edited.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Date unavailable'}
               </time>
             </div>
+            {document.operation && <div className="document-operation"><span role="status">{document.operation}</span>
+              {document.deleteFailed && <button onClick={() => remove({ confirmed: true, snapshot: document })}>Retry delete</button>}
+            </div>}
           </div>;
         })}</nav>
         <div className="sidebar-bottom">
-          <button className="import-button" onClick={() => fileInput.current.click()} disabled={busy}><Icon name="upload" /><span>Import .tex file</span></button>
-          <button className="delete-button" onClick={remove} disabled={!current || busy}>Delete current document</button>
+          <button className="import-button" onClick={() => fileInput.current.click()}><Icon name="upload" /><span>Import .tex file</span></button>
+          <button className="delete-button" onClick={remove} disabled={!current || deletions.current.get(current.id)?.status === 'pending'}>Delete current document</button>
         </div>
       </aside>
       {mobile && sidebar && <div className="drawer-backdrop" aria-hidden="true" onClick={() => setSidebar(false)} />}
@@ -1071,7 +1165,7 @@ function App() {
           <div className="document-title">
             <span className="document-title-field">
               <span className="document-title-measure" aria-hidden="true">{`${current?.title || ''} `}</span>
-              <input ref={titleInput} key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current || busy} readOnly={mobile && tab === 'preview'}
+              <input ref={titleInput} key={`${current?.id || 'empty'}:${generation.current}`} defaultValue={current?.title || ''} aria-label="Document title" maxLength={100} disabled={!current} readOnly={mobile && tab === 'preview'}
                 onChange={event => update({ title: event.target.value })} onBlur={event => {
                   if (!active.current?.title.trim()) { event.target.value = 'Untitled paper'; update({ title: 'Untitled paper' }); }
                   persist().catch(() => {});
@@ -1090,8 +1184,8 @@ function App() {
             {!mobile && <>
               <button className="quiet" aria-label="Export .tex" title="Export .tex" disabled={!current} onClick={exportTex}><Icon name="download" /><span>.tex</span></button>
               <button className="quiet" aria-label="Export PDF" title="Export PDF" disabled={!pdf} onClick={exportPdf}><Icon name="download" /><span>PDF</span></button>
-              <button className="save-button" aria-label={busy ? 'Saving...' : 'Save to account'} title="Save to account" disabled={!current || busy} onClick={sync}><Icon name="cloud" /><span className="action-label">{busy ? 'Saving...' : 'Save'}</span></button>
-              <button className="quiet" disabled={!current || busy} onClick={() => setSharing(true)}>Share</button>
+              <button className="save-button" aria-label="Save to account" title="Save to account" disabled={!current} onClick={sync}><Icon name="cloud" /><span className="action-label">Save</span></button>
+              <button className="quiet" disabled={!current} onClick={() => setSharing(true)}>Share</button>
               {desktopSidebarHidden && <>
                 <button className="quiet" aria-label="More document actions" title="More document actions" popoverTarget="document-overflow"><Icon name="more" /></button>
                 <div id="document-overflow" className="document-overflow" popover="auto" role="group" aria-label="Document actions" onToggle={event => {
@@ -1102,9 +1196,9 @@ function App() {
                 }} onClick={event => {
                   if (event.target.closest('button')) event.currentTarget.hidePopover();
                 }}>
-                  <button disabled={busy} onClick={() => newDocument()}><Icon name="plus" />New document</button>
-                  <button disabled={busy} onClick={() => fileInput.current.click()}><Icon name="upload" />Import .tex file</button>
-                  <button className="delete-button" disabled={!current || busy} onClick={remove}>Delete current document</button>
+                  <button onClick={() => newDocument()}><Icon name="plus" />New document</button>
+                  <button onClick={() => fileInput.current.click()}><Icon name="upload" />Import .tex file</button>
+                  <button className="delete-button" disabled={!current || deletions.current.get(current.id)?.status === 'pending'} onClick={remove}>Delete current document</button>
                 </div>
               </>}
             </>}
@@ -1169,17 +1263,17 @@ function App() {
         </div>
         <div className="action-sheet-items">
           <button onClick={fromMenu(() => setSidebar(true))} aria-controls="document-sidebar"><Icon name="panel" />Documents</button>
-          <button onClick={fromMenu(() => newDocument())} disabled={busy}><Icon name="plus" />New document</button>
+          <button onClick={fromMenu(() => newDocument())}><Icon name="plus" />New document</button>
           <button onClick={fromMenu(exportTex)} disabled={!current}><Icon name="download" />Export .tex</button>
           <button onClick={fromMenu(exportPdf)} disabled={!pdf}><Icon name="download" />Export PDF</button>
           {pdf ? <a href={pdf.url} target="_blank" rel="noopener" onClick={() => menuDialog.current?.close()}><Icon name="external" />Open PDF</a>
             : <button disabled><Icon name="external" />Open PDF</button>}
-          <button onClick={fromMenu(sync)} disabled={!current || busy}><Icon name="cloud" />{busy ? 'Saving...' : 'Save to account'}</button>
-          <button onClick={fromMenu(() => setSharing(true))} disabled={!current || busy}><Icon name="external" />Share read-only link</button>
+          <button onClick={fromMenu(sync)} disabled={!current}><Icon name="cloud" />Save to account</button>
+          <button onClick={fromMenu(() => setSharing(true))} disabled={!current}><Icon name="external" />Share read-only link</button>
           <label className="action-sheet-toggle"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} />Live preview</label>
           <button onClick={fromMenu(() => { setTab('preview'); setLogShown(true); })}><Icon name="terminal" />Compilation log</button>
           <button onClick={fromMenu(() => setShowHelp(true))}><Icon name="help" />Help</button>
-          {user ? <button onClick={fromMenu(signOut)} disabled={busy}><Icon name="user" />Sign out {user.username}</button>
+          {user ? <button onClick={fromMenu(signOut)}><Icon name="user" />Sign out {user.username}</button>
             : <button onClick={fromMenu(() => setAuth('login'))}><Icon name="user" />Sign in</button>}
         </div>
         <p className="action-sheet-status"><span>{compileState}</span><span>{engineState}</span></p>
