@@ -7,6 +7,8 @@ import ProjectsView from './components/ProjectsView.jsx';
 import DocumentAvailability from './components/DocumentAvailability.jsx';
 import Icon from './components/Icon.jsx';
 import PdfPreview from './components/PdfPreview.jsx';
+import ShareDialog from './components/ShareDialog.jsx';
+import SharedDocument from './components/SharedDocument.jsx';
 import useWorkspaceResize from './components/workspace-resize.js';
 import { mergeDocuments } from './document-list.js';
 import { documentPath, documentRoute, newDocumentCode, validDocumentCode } from './document-url.js';
@@ -59,6 +61,7 @@ function App() {
   const [editorOpened, setEditorOpened] = useState(false);
   const [sidebar, setSidebar] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [live, setLive] = useState(false);
   const [engineState, setEngineState] = useState('Preparing browser engine...');
   const [menu, setMenu] = useState(false);
@@ -1088,6 +1091,7 @@ function App() {
               <button className="quiet" aria-label="Export .tex" title="Export .tex" disabled={!current} onClick={exportTex}><Icon name="download" /><span>.tex</span></button>
               <button className="quiet" aria-label="Export PDF" title="Export PDF" disabled={!pdf} onClick={exportPdf}><Icon name="download" /><span>PDF</span></button>
               <button className="save-button" aria-label={busy ? 'Saving...' : 'Save to account'} title="Save to account" disabled={!current || busy} onClick={sync}><Icon name="cloud" /><span className="action-label">{busy ? 'Saving...' : 'Save'}</span></button>
+              <button className="quiet" disabled={!current || busy} onClick={() => setSharing(true)}>Share</button>
               {desktopSidebarHidden && <>
                 <button className="quiet" aria-label="More document actions" title="More document actions" popoverTarget="document-overflow"><Icon name="more" /></button>
                 <div id="document-overflow" className="document-overflow" popover="auto" role="group" aria-label="Document actions" onToggle={event => {
@@ -1171,6 +1175,7 @@ function App() {
           {pdf ? <a href={pdf.url} target="_blank" rel="noopener" onClick={() => menuDialog.current?.close()}><Icon name="external" />Open PDF</a>
             : <button disabled><Icon name="external" />Open PDF</button>}
           <button onClick={fromMenu(sync)} disabled={!current || busy}><Icon name="cloud" />{busy ? 'Saving...' : 'Save to account'}</button>
+          <button onClick={fromMenu(() => setSharing(true))} disabled={!current || busy}><Icon name="external" />Share read-only link</button>
           <label className="action-sheet-toggle"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} />Live preview</label>
           <button onClick={fromMenu(() => { setTab('preview'); setLogShown(true); })}><Icon name="terminal" />Compilation log</button>
           <button onClick={fromMenu(() => setShowHelp(true))}><Icon name="help" />Help</button>
@@ -1186,6 +1191,13 @@ function App() {
       try { await refreshCloud(signedIn); } catch (reason) { notice(reason); }
     }} />}
     {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
+    {sharing && <ShareDialog signedIn={Boolean(user)} onClose={() => setSharing(false)} onSignIn={() => setAuth('login')}
+      createShare={async () => {
+        const snapshot = active.current;
+        const result = await sync({ snapshot });
+        if (!result.ok) throw new Error(result.error || 'Save to your account before sharing.');
+        return (await api(`/documents/${result.cloudId}/share`, {})).share.id;
+      }} />}
   </div>;
 }
 
@@ -1272,4 +1284,4 @@ function AuthDialog({ mode, setMode, onClose, onSuccess }) {
   </section></div>;
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(location.pathname.startsWith('/share/') ? <SharedDocument /> : <App />);

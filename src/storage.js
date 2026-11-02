@@ -2,7 +2,8 @@ import { newDocumentCode, validDocumentCode } from './document-url.js';
 import { mergeText } from './crdt.js';
 import { skipDefault } from './starter.js';
 
-const opened = new Promise((resolve, reject) => {
+let opened;
+const openDrafts = () => opened ||= new Promise((resolve, reject) => {
   const request = indexedDB.open('folio-drafts', 2);
   request.onupgradeneeded = () => {
     const store = request.result.objectStoreNames.contains('documents')
@@ -18,7 +19,7 @@ const opened = new Promise((resolve, reject) => {
   request.onerror = () => reject(new Error('Local storage is unavailable. Export your source before leaving.'));
 });
 async function transaction(mode, action) {
-  const db = await opened;
+  const db = await openDrafts();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('documents', mode);
     let failure;
@@ -59,7 +60,7 @@ export const drafts = {
     return request;
   }),
   put: async document => {
-    const db = await opened;
+    const db = await openDrafts();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('documents', 'readwrite');
       const store = tx.objectStore('documents');

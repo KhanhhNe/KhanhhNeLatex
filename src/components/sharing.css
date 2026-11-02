@@ -1,0 +1,24 @@
+.share-dialog::backdrop{background:#0009}
+.share-dialog button,.shared-document button,.shared-document a{min-height:44px;min-width:44px}
+.share-dialog>button{margin:4px 8px 0 0}
+.share-dialog label{display:block;font-size:.875rem}
+.share-dialog input{display:block;width:100%;margin-top:8px;min-height:44px;font-size:16px;padding:8px;background:var(--surface);color:inherit;border:1px solid var(--border);border-radius:6px}
+.shared-document{display:flex;flex-direction:column;height:100dvh;min-height:360px;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.shared-toolbar{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.shared-heading{flex:1;min-width:0}
+.shared-heading h1{font-size:1rem;margin:0;overflow-wrap:anywhere}
+.shared-heading span{font-size:.75rem;color:var(--muted)}
+.shared-actions{display:flex;gap:4px;flex-wrap:wrap}
+.shared-panels{display:flex;flex:1;min-height:0}
+.shared-panels>section{flex:1;min-width:0}
+.shared-panels .latex-editor{flex:1}
+.shared-footer{padding:4px 12px;border-top:1px solid var(--border)}
+.shared-footer p{margin:4px 0;font-size:.75rem}
+.shared-footer .compile-log pre{max-height:160px;overflow:auto}
+@media(max-width:1050px){
+  .shared-toolbar{gap:6px}
+  .shared-actions{width:100%;justify-content:space-between}
+  .shared-actions button{padding:6px 8px;font-size:.75rem}
+  .shared-panels.show-source>.preview-panel{display:none}
+  .shared-heading h1{font-size:.9375rem}
+}
