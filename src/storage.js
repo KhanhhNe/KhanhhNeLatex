@@ -1,5 +1,6 @@
 import { newDocumentCode, validDocumentCode } from './document-url.js';
 import { mergeText } from './crdt.js';
+import { skipDefault } from './starter.js';
 
 const opened = new Promise((resolve, reject) => {
   const request = indexedDB.open('folio-drafts', 2);
@@ -83,6 +84,20 @@ export const drafts = {
     });
   },
   delete: id => transaction('readwrite', store => store.delete(id)),
+  discardDefault: async (id, accountDocuments, latest) => {
+    let removed = false;
+    await transaction('readwrite', store => {
+      const request = store.get(id);
+      request.onsuccess = () => {
+        if (request.result && skipDefault(request.result, accountDocuments) && skipDefault(latest(), accountDocuments)) {
+          store.delete(id);
+          removed = true;
+        }
+      };
+      return request;
+    });
+    return removed;
+  },
 };
 
 export async function api(path, body, method = body ? 'POST' : 'GET') {

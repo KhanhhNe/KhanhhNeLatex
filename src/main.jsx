@@ -12,46 +12,12 @@ import { mergeDocuments } from './document-list.js';
 import { documentPath, documentRoute, newDocumentCode, validDocumentCode } from './document-url.js';
 import { API_METHODS, createAgentApi } from './agent-api.js';
 import { createText, editText, encodeState, mergeText } from './crdt.js';
+import { starter, starterTitle, skipDefault } from './starter.js';
 import './style.css';
 
-const starter = String.raw`\documentclass[11pt]{article}
-\usepackage{amsmath}
-\usepackage[margin=1in]{geometry}
-
-\title{A little room for big ideas}
-\author{Your name}
-\date{\today}
-
-\begin{document}
-\maketitle
-
-\begin{abstract}
-Every good paper starts with a thought.
-This is a quiet place to give yours a little structure.
-\end{abstract}
-
-\section{The beginning}
-Write freely. Compile when you are ready.
-Your source stays in this browser until you choose
-to save it to your account.
-
-\section{A beautiful idea}
-The Gaussian integral is
-\begin{equation}
-  \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}.
-\end{equation}
-
-\section{Next steps}
-\begin{itemize}
-  \item Give this document a title.
-  \item Make something worth sharing.
-  \item Export your source or a finished PDF.
-\end{itemize}
-
-\end{document}
-`;
-const makeDraft = (source = starter, title = 'Untitled paper') => ({
+const makeDraft = (source = starter, title = starterTitle, defaultDocument = false) => ({
   id: crypto.randomUUID(), code: newDocumentCode(), title, source, updated_at: Date.now(), cloudId: null, revision: null, owner: null, dirty: true,
+  defaultDocument,
 });
 const elapsed = milliseconds => milliseconds < 1000 ? `${Math.round(milliseconds)} ms` : `${(milliseconds / 1000).toFixed(2)} s`;
 function samePdf(first, second) {
@@ -135,8 +101,9 @@ function App() {
   const cloudMetadata = useRef(new Map());
   const textReplica = useRef(null);
   const localLoaded = useRef(Promise.resolve());
+  const reconciliation = useRef(Promise.resolve());
+  const discardedDefaults = useRef(new Set());
   const draftChannel = useRef(null);
-  account.current = user;
   const editorApi = useRef(null);
   const titleInput = useRef(null);
   const lastError = useRef('');
@@ -263,15 +230,17 @@ function App() {
   }
   async function persist(document = active.current) {
     if (!document) return;
+    if (discardedDefaults.current.has(document.id)) return;
     if (document === active.current) clearTimeout(timer.current);
     if (persisted.current.has(document)) return;
     if (document === active.current) pending.current = true;
     const started = performance.now();
     try {
       const snapshot = materialize(document);
-      const work = saving.current.catch(() => {}).then(() => drafts.put(snapshot));
+      const work = saving.current.catch(() => {}).then(() => discardedDefaults.current.has(snapshot.id) ? undefined : drafts.put(snapshot));
       saving.current = work;
       let saved = await work;
+      if (!saved || discardedDefaults.current.has(document.id)) return;
       localSaveMs.current = performance.now() - started;
       emit('save', { documentId: document.id, local: true, cloud: false });
       let raced = false;
@@ -391,7 +360,12 @@ function App() {
     try { await select(document); }
     catch (reason) { notice(reason); }
   }
-  async function refreshCloud(owner = account.current, reconcile = true) {
+  function refreshCloud(owner = account.current, reconcile = true) {
+    const work = loadCloud(owner, reconcile);
+    if (reconcile) reconciliation.current = work;
+    return work;
+  }
+  async function loadCloud(owner, reconcile) {
     if (!owner) { cloudRequest.current++; setCloud([]); return; }
     const request = ++cloudRequest.current;
     const data = await api('/documents');
@@ -400,10 +374,40 @@ function App() {
     setCloud(data.documents);
     if (reconcile) {
       await localLoaded.current;
+      await flush();
       const list = await drafts.all();
       if (account.current?.id !== owner.id) return;
       for (let document of list) {
+        document = active.current?.id === document.id ? materialize(active.current) : document;
         if (document.owner && document.owner !== owner.id) continue;
+        if (skipDefault(document, data.documents)) {
+          const route = documentRoute(location.pathname);
+          const replaceActive = active.current?.id === document.id && (!route || route.code === document.code);
+          const replacement = replaceActive
+            ? (await api(`/documents/${data.documents[0].id}`)).document : null;
+          if (account.current?.id !== owner.id) return;
+          const removed = await drafts.discardDefault(document.id, data.documents, () =>
+            active.current?.id === document.id ? materialize(active.current) : document);
+          const latest = active.current?.id === document.id ? materialize(active.current) : document;
+          if (removed && !skipDefault(latest, data.documents)) await persist(latest);
+          else if (removed) {
+            discardedDefaults.current.add(document.id);
+            clearTimeout(cloudTimers.current.get(document.id));
+            cloudTimers.current.delete(document.id);
+            cloudSnapshots.current.delete(document.id);
+            setDocuments(items => items.filter(item => item.id !== document.id));
+            localDocuments.current = localDocuments.current.filter(item => item.id !== document.id);
+            if (active.current?.id === document.id) {
+              clearTimeout(timer.current);
+              active.current = null;
+              setCurrent(null);
+              pending.current = false;
+              if (replaceActive) await openCloud(data.documents[0], replacement);
+            }
+            continue;
+          }
+          document = latest;
+        }
         const linked = document.owner === owner.id && data.documents.find(item => item.id === document.cloudId);
         if (linked?.code && linked.code !== document.code) {
           document = adoptCode(active.current?.id === document.id ? active.current : document, linked.code);
@@ -424,7 +428,7 @@ function App() {
       setLive(liveEnabled.current);
     } catch { notice(new Error('Could not read the live preview preference. This session starts with live preview off.')); }
     localLoaded.current = drafts.all().then(async list => {
-      const document = list.sort((a, b) => b.updated_at - a.updated_at)[0] || makeDraft();
+      const document = list.sort((a, b) => b.updated_at - a.updated_at)[0] || makeDraft(undefined, undefined, true);
       if (!list.length) await drafts.put(document);
       if (disposed) return;
       for (const draft of list.length ? list : [document]) persisted.current.add(draft);
@@ -513,6 +517,8 @@ function App() {
     let disposed = false;
     const stillCurrent = () => !disposed && request === selectionRequest.current && location.pathname === pathname;
     async function resolve() {
+      await reconciliation.current;
+      if (!stillCurrent()) return;
       if (!route) {
         if (location.hash === '#workspace') await select(active.current, false, 'replace');
         else {
@@ -668,6 +674,13 @@ function App() {
     }, 800));
   }
   async function sync({ snapshot = active.current, automatic = false } = {}) {
+    try {
+      let work;
+      do { work = reconciliation.current; await work; } while (work !== reconciliation.current);
+    }
+    catch (reason) { notice(reason); return { ok: false, error: reason.message }; }
+    if (snapshot && discardedDefaults.current.has(snapshot.id))
+      return { ok: true, skipped: true, documentId: snapshot.id };
     if (!snapshot) return { ok: false, error: 'No document is open.' };
     const owner = account.current;
     if (!owner) { if (!automatic) setAuth('login'); return { ok: false, error: 'Sign in to save to your account.' }; }
@@ -750,11 +763,11 @@ function App() {
     }
     return outcome;
   }
-  async function openCloud(item) {
+  async function openCloud(item, fetched = null) {
     const request = ++selectionRequest.current;
     const owner = account.current?.id;
     try {
-      const { document } = await api(`/documents/${item.id}`);
+      const document = fetched || (await api(`/documents/${item.id}`)).document;
       if (request !== selectionRequest.current || account.current?.id !== owner) return;
       const eligible = doc => (!doc.owner || doc.owner === account.current?.id)
         && (doc.code === document.code || doc.cloudId === item.id);

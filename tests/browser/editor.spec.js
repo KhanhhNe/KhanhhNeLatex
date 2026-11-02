@@ -561,6 +561,9 @@ test('long account names retain an explicit mobile sign-out action without overf
 });
 
 test('reopening a linked document merges concurrent text without a replacement prompt', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => latex.ready());
+  await page.evaluate(() => latex.rename('Device paper'));
   let cloud = { id: 'cloud-document', code: 'Cloud123', title: 'Cloud title', source: 'original cloud text', revision: 1 };
   await page.route('**/api/me', route => route.fulfill({ json: { user: { id: 'owner', username: 'writer' } } }));
   await page.route('**/api/documents', route => route.fulfill({ json: { documents: [cloud] } }));
@@ -573,6 +576,7 @@ test('reopening a linked document merges concurrent text without a replacement p
     return route.fulfill({ json: { document: cloud } });
   });
   await page.goto('/#workspace');
+  await page.reload();
   await editorReady(page);
   await page.getByRole('navigation', { name: 'Documents' }).getByRole('button').filter({ hasText: 'Cloud title' }).click();
   await expectSource(page, 'original cloud text');
