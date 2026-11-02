@@ -84,6 +84,7 @@ export default function LatexEditor({
       instance = monaco.editor.create(host.current, {
         model, theme: 'folio', ariaLabel: current.ariaLabel,
         readOnly: current.readOnly || current.loading,
+        domReadOnly: true,
         fontFamily: '"Cascadia Code", Consolas, "Liberation Mono", monospace',
         ...editorMetrics(host.current), tabSize: 2, insertSpaces: true,
         minimap: { enabled: false }, wordWrap: 'off',

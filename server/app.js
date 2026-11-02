@@ -7,6 +7,7 @@ import { googleFontMetadata } from './fonts.js';
 import { newDocumentCode, validDocumentCode } from '../src/document-url.js';
 import { registerDocumentSync, documentFields } from './document-sync.js';
 import { createText, editText, encodeState } from '../src/crdt.js';
+import { registerSharedRead, registerDocumentShares } from './document-shares.js';
 
 const SESSION_MS = 7 * 86400000;
 const dummyHash = 'scrypt$16384$8$1$00000000000000000000000000000000$' + '0'.repeat(64);
@@ -78,6 +79,7 @@ export function createApp(env) {
   };
   app.post('/api/register', throttle, authRoute(true));
   app.post('/api/login', throttle, authRoute(false));
+  registerSharedRead(app, db);
   app.use(['/api/me', '/api/logout', '/api/documents'], async (req, res, next) => {
     const token = req.headers.cookie?.split(';').map(s => s.trim()).find(s => s.startsWith('folio_session='))?.slice(14);
     if (!token || !/^[a-f0-9]{64}$/.test(token)) return res.status(401).json({ error: 'Sign in to sync your documents.' });
@@ -89,6 +91,7 @@ export function createApp(env) {
     next();
   });
   app.get('/api/me', (req, res) => res.json({ user: req.user }));
+  registerDocumentShares(app, db);
   const synchronize = registerDocumentSync(app, db);
   function bootstrapSync(req, res) {
     const replica = createText({ code: req.body.code, source: req.body.source });

@@ -31,3 +31,8 @@ export const authLimits = sqliteTable('auth_limits', {
   count: integer('count').notNull(),
   reset_at: integer('reset_at').notNull(),
 });
+export const documentShares = sqliteTable('document_shares', {
+  id: text('id').primaryKey(),
+  document_id: text('document_id').notNull().unique().references(() => documents.id, { onDelete: 'cascade' }),
+  created_at: integer('created_at').notNull(),
+});
