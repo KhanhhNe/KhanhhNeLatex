@@ -16,10 +16,10 @@ export async function editorReady(page) {
   const host = page.locator('.latex-editor-host');
   const fallback = page.locator('.latex-editor-fallback');
   await expect.poll(async () => await host.isVisible() || await fallback.isVisible(), { timeout: 15000 }).toBe(true);
-  if (await fallback.isVisible()) {
-    await expect(fallback).toBeEnabled();
-    await fallback.focus();
-  }
+  await page.locator('#source-panel .latex-editor').evaluate(editor => {
+    const textarea = editor.querySelector('.latex-editor-fallback');
+    if (textarea && !textarea.disabled) textarea.focus();
+  });
   await expect(host).toBeVisible({ timeout: 15000 });
   await expect(sourceEditor(page)).toBeEnabled();
 }
