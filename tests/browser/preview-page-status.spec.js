@@ -19,6 +19,9 @@ async function compile(page, count, label) {
 }
 
 async function goToPage(page, number) {
+  // Fit/resize anchors apply on the next frame and must finish before this intentional scroll.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.locator(`${shown} .pdf-pages`)).toHaveCSS('transform', 'none');
   await page.locator(`${shown} .pdf-viewport`).evaluate((view, number) => {
     const paper = view.querySelectorAll('.pdf-page')[number - 1];
     const box = paper.getBoundingClientRect(), viewport = view.getBoundingClientRect();
