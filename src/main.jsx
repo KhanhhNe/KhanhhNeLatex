@@ -998,8 +998,9 @@ function App() {
   }, []);
   useEffect(() => {
     const keys = event => {
-      if (actions.current.modal) return;
-      if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) {
+      if (actions.current.modal || event.defaultPrevented) return;
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey &&
+        (event.key === 'Enter' || event.key.toLowerCase() === 's')) {
         event.preventDefault();
         actions.current.compile();
       }
@@ -1225,7 +1226,7 @@ function App() {
                 onChange={(source, changes, before) => update({ source }, changes, before)}
                 onSave={() => compile()} onCompile={() => compile()} />}
             </div>
-            {!mobile && <div className="editor-footer"><span>main.tex <span className="footer-separator">·</span> LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">Tab indents; Shift+Tab leaves. Ctrl+Enter compiles.</span></div>}
+            {!mobile && <div className="editor-footer"><span>main.tex <span className="footer-separator">·</span> LaTeX <span className="footer-separator">·</span> UTF-8</span><span id="source-shortcuts">F1 commands; Tab/Shift+Tab indent/outdent. Ctrl/Cmd+S compiles.</span></div>}
           </section>
           <div ref={sizing.splitHandle} className="pane-separator" role="separator" tabIndex={0}
             aria-label="Source editor width" aria-orientation="vertical" aria-controls="source-panel"
@@ -1346,6 +1347,7 @@ function HelpDialog({ onClose }) {
   return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
       <section ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="help-title"><button className="modal-close" aria-label="Close help" onClick={onClose}><Icon name="close" /></button>
         <h2 id="help-title">Workspace help</h2>
+        <p>The source editor uses Monaco's native editing commands: F1 opens its command palette, Ctrl/Cmd+F finds, Ctrl+H (Cmd+Option+F on macOS) replaces, Ctrl/Cmd+/ toggles LaTeX line comments, and Tab/Shift+Tab indents/outdents. Line movement/copying, multiple cursors, undo/redo and word/line navigation use Monaco's platform keybindings. Ctrl+M (Ctrl+Shift+M on macOS) toggles Tab Moves Focus so Tab/Shift+Tab can leave the editor. Ctrl/Cmd+S and Ctrl/Cmd+Enter are reserved by this app for compilation; Ctrl/Cmd+Shift+Enter retains native Insert Line Above. Browser or OS shortcuts may take priority; F1 and the editor context menu expose available commands. This is a browser editor, not the VS Code workbench or extension host. Native word wrapping is on by default, including shared source views. Installed Monaco does not provide VS Code's Alt+Z Toggle Word Wrap command; no custom shortcut emulation is installed.</p>
         <p>On mobile, documents open in Read mode. Export PDF or Export .tex while reading; Open PDF uses your browser's native viewer for text selection, search and accessibility. Copy private link is in More actions; account links require the owner's sign-in and do not enable public sharing. Switch to Edit for small source or title changes and account saving. Compile &amp; read returns to the PDF after a successful compile; failed or cancelled compilations keep the last good preview. Live preview is available in Edit. The enhanced editor loads only when needed.</p>
         <p>Each document is one UTF-8 .tex file, up to 100,000 characters. Images, binary files and external source assets are not supported.</p>
         <p>The default bundled pdfTeX engine supports article, report, book, amsmath, amssymb, geometry and standard Computer Modern fonts. No shell escape, bibliography uploads, font uploads, or automatic package downloads. Full Unicode and every CTAN package are not supported.</p>

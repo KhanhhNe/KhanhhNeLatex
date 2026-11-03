@@ -2,7 +2,22 @@ import * as monaco from 'monaco-editor/editor/editor.api.js';
 import 'monaco-editor/editor/contrib/clipboard/browser/clipboard.js';
 import 'monaco-editor/editor/contrib/find/browser/findController.js';
 import 'monaco-editor/editor/contrib/bracketMatching/browser/bracketMatching.js';
+import 'monaco-editor/editor/contrib/comment/browser/comment.js';
+import 'monaco-editor/editor/contrib/contextmenu/browser/contextmenu.js';
+import 'monaco-editor/editor/contrib/cursorUndo/browser/cursorUndo.js';
+import 'monaco-editor/editor/contrib/indentation/browser/indentation.js';
+import 'monaco-editor/editor/contrib/lineSelection/browser/lineSelection.js';
+import 'monaco-editor/editor/contrib/linesOperations/browser/linesOperations.js';
+import 'monaco-editor/editor/contrib/multicursor/browser/multicursor.js';
+import 'monaco-editor/editor/contrib/readOnlyMessage/browser/contribution.js';
+import 'monaco-editor/editor/contrib/smartSelect/browser/smartSelect.js';
 import 'monaco-editor/editor/contrib/toggleTabFocusMode/browser/toggleTabFocusMode.js';
+import 'monaco-editor/editor/contrib/wordOperations/browser/wordOperations.js';
+import 'monaco-editor/editor/contrib/wordPartOperations/browser/wordPartOperations.js';
+import 'monaco-editor/editor/standalone/browser/quickAccess/standaloneCommandsQuickAccess.js';
+import 'monaco-editor/editor/standalone/browser/quickAccess/standaloneGotoLineQuickAccess.js';
+import 'monaco-editor/editor/standalone/browser/quickAccess/standaloneHelpQuickAccess.js';
+import 'monaco-editor/features/codicon/register.js';
 import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
 
 // Only the text editor worker is needed; pdfTeX owns its separate compile worker.

@@ -2,7 +2,8 @@ import { test, expect, devices } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const source = String.raw`\documentclass{article}\begin{document}Read-only shared paper.\end{document}`;
+const source = String.raw`\documentclass{article}\begin{document}Read-only shared paper.\end{document}` +
+  '\n% ' + 'Read-only wrapping comment. '.repeat(30);
 async function ownerClient(playwright, baseURL) {
   const client = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { Origin: baseURL } });
   const response = await client.post('/api/register', { data: { username: `share_${crypto.randomUUID().slice(0, 12)}`, password: 'test-sharing-password' } });
@@ -115,9 +116,19 @@ for (const { mobile, browserName } of [{ mobile: false, browserName: 'chromium' 
       await expect(viewer.locator('.latex-editor-host')).toBeVisible();
       const editor = viewer.getByRole('textbox', { name: 'LaTeX source', exact: true });
       await expect(editor).toHaveJSProperty('readOnly', true);
+      await expect.poll(() => viewer.locator('.view-lines .view-line').count()).toBeGreaterThan(2);
       await editor.press('Control+End');
       await viewer.keyboard.insertText('MUST NOT BE SAVED');
       await expect(viewer.locator('.view-lines')).not.toContainText('MUST NOT BE SAVED');
+      await editor.press('Control+a');
+      for (const key of ['Control+/', 'Tab', 'Shift+Tab', 'Alt+ArrowDown', 'Alt+Shift+ArrowDown', 'Control+z', 'Control+Shift+z', 'Alt+z'])
+        await editor.press(key);
+      await editor.press('F1');
+      await expect(viewer.locator('.quick-input-widget')).toBeVisible();
+      await viewer.locator('.quick-input-widget').getByRole('textbox').press('Escape');
+      await editor.press('Control+f');
+      await expect(viewer.getByRole('textbox', { name: 'Find', exact: true })).toBeVisible();
+      await viewer.getByRole('textbox', { name: 'Find', exact: true }).press('Escape');
       if (process.env.SHARE_ARTIFACTS) await viewer.screenshot({ path: join(process.env.SHARE_ARTIFACTS, `share-source-${mobile ? 'mobile' : 'desktop'}.png`) });
       const texExporting = viewer.waitForEvent('download');
       await viewer.getByRole('button', { name: 'Export .tex', exact: true }).click();
