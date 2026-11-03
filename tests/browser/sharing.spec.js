@@ -105,7 +105,7 @@ for (const { mobile, browserName } of [{ mobile: false, browserName: 'chromium' 
       viewer.on('pageerror', error => errors.push(error.stack || error.message));
       await viewer.goto(url);
       await expect(viewer.getByRole('heading', { name: 'Shared paper' })).toBeVisible();
-      await expect(viewer.locator('.shared-footer [role=status]')).toContainText('Compiled in your browser', { timeout: 60000 });
+      await expect(viewer.locator('.preview-status [role=status]')).toContainText('Compiled in your browser', { timeout: 60000 });
       await expect(viewer.locator('.pdf-viewer[title="Compiled PDF"]')).toBeVisible();
       await expect(viewer.getByRole('img', { name: 'PDF page 1. Open PDF for selectable text.' })).toBeVisible();
       const exporting = viewer.waitForEvent('download');
