@@ -58,7 +58,7 @@ test('the app adopts a still-loading early worker without restarting its downloa
   await observeWorkers(page);
   let release;
   const hold = new Promise(resolve => { release = resolve; });
-  await context.route(/\/compiler\/swiftlatexpdftex\.wasm$/, async route => {
+  await context.route(/\/compiler\/swiftlatexpdftex\.wasm(?:\?v=[a-f0-9]+)?$/, async route => {
     await hold;
     await route.continue();
   });

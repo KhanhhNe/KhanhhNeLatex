@@ -41,7 +41,7 @@ Local source remains local.
 async function loadCompiler(page) {
   const body = await readFile(new URL('../../src/compiler.js', import.meta.url), 'utf8');
   await page.route('**/compiler-client.js', route => route.fulfill({ contentType: 'text/javascript', body }));
-  for (const file of ['google-fonts.js', 'font-policy.js', 'engine-start.js']) {
+  for (const file of ['google-fonts.js', 'font-policy.js', 'engine-start.js', 'compiler-version.js']) {
     const body = await readFile(new URL(`../../src/${file}`, import.meta.url), 'utf8');
     await page.route(`**/${file}`, route => route.fulfill({ contentType: 'text/javascript', body }));
   }
@@ -55,7 +55,7 @@ async function loadCompiler(page) {
 test('slow WASM and format loading do not consume the real worker compile deadline', async ({ page, context }) => {
   await loadCompiler(page);
   let formatRequests = 0;
-  await context.route(/\/compiler\/(?:swiftlatexpdftex\.wasm|formats\/pdftex-[a-f0-9]+\.fmt\.gz)$/, async route => {
+  await context.route(/\/compiler\/(?:swiftlatexpdftex\.wasm|formats\/pdftex-[a-f0-9]+\.fmt\.gz)(?:\?v=[a-f0-9]+)?$/, async route => {
     if (route.request().url().includes('/formats/')) formatRequests++;
     await new Promise(resolve => setTimeout(resolve, 3000));
     await route.continue();
@@ -408,7 +408,7 @@ test('timeout, dispatch, status, loading and decoding errors release workers and
 
 test('startup preparation rejects oversized packages, releases its worker and retries', async ({ page, context }) => {
   await loadCompiler(page);
-  await context.route('**/compiler/tex/article.cls', route => route.fulfill({
+  await context.route(/\/compiler\/tex\/article\.cls(?:\?v=[a-f0-9]+)?$/, route => route.fulfill({
     contentType: 'application/octet-stream', body: Buffer.alloc(193 * 1024),
   }));
   const failure = await page.evaluate(async () => {
@@ -418,7 +418,7 @@ test('startup preparation rejects oversized packages, releases its worker and re
   });
   expect(failure.message).toContain('startup packages exceeded their memory limit');
   expect(failure.warming).toBeNull();
-  await context.unroute('**/compiler/tex/article.cls');
+  await context.unroute(/\/compiler\/tex\/article\.cls(?:\?v=[a-f0-9]+)?$/);
   const magic = await page.evaluate(async source => {
     const result = await new window.LatexCompiler().compile(source);
     return new TextDecoder().decode(new Uint8Array(result.pdf).slice(0, 5));

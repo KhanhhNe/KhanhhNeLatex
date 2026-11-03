@@ -1,4 +1,5 @@
 import { validFamily, fontAlias, trustedFontUrl, readBounded, MAX_FONT_BYTES, MAX_JOB_FONT_BYTES, MAX_FONT_FACES } from './font-policy.js';
+import { COMPILER_VERSION } from './compiler-version.js';
 
 // Replace ignored regions with spaces so replacement offsets still refer to the original source.
 export function fontSource(source) {
@@ -212,7 +213,7 @@ export class GoogleFontLoader {
       const italic = face.italic || alias?.italic;
       if (![400, 700].includes(weight)) throw new Error('Bundled Latin Modern Roman supports regular, bold, italic and bold italic only.');
       const style = weight === 700 ? italic ? 'bolditalic' : 'bold' : italic ? 'italic' : 'regular';
-      const bytes = await readBounded(await this.fetcher(`/compiler/native-tex/lmroman10-${style}.otf`, {
+      const bytes = await readBounded(await this.fetcher(`/compiler/native-tex/lmroman10-${style}.otf?v=${COMPILER_VERSION}`, {
         signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]), credentials: 'omit', redirect: 'error',
       }), MAX_FONT_BYTES);
       signal.throwIfAborted();

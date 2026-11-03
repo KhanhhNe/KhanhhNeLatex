@@ -1,4 +1,6 @@
-export const PDFTEX_WORKER = '/compiler/worker.js?v=startup-8';
+import { COMPILER_VERSION } from './compiler-version.js';
+
+export const PDFTEX_WORKER = `/compiler/worker.js?v=${COMPILER_VERSION}`;
 export const WORKER_START_TIMEOUT = 10000;
 const NOT_STARTED = 'The browser compiler did not start. If a debugger or browser automation tool is attached to this page, let it resume new workers, then reload.';
 

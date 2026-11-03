@@ -6,6 +6,55 @@
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data:; frame-src blob:; object-src blob:; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 /compiler/*
   Cache-Control: public, max-age=3600
+# Requested only with ?v=<COMPILER_VERSION> (content hash of every compiler asset), so a release never reuses old entries.
+/compiler/tex/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/native-tex/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/worker.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/native-worker.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/xetex-worker.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/dvipdf-worker.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/manifest.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/native-manifest.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/format-assets.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/native-package-loader.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/swiftlatexpdftex.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/swiftlatexpdftex.wasm
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/swiftlatexxetex.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/swiftlatexxetex.wasm
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/swiftlatexdvipdfm.js
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+/compiler/swiftlatexdvipdfm.wasm
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
 /compiler/formats/*
   ! Cache-Control
   Content-Type: application/gzip
