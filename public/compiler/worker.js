@@ -2,6 +2,8 @@
 self.postMessage({ cmd: 'started' });
 importScripts(`/compiler/manifest.js${self.location.search}`, `/compiler/format-assets.js${self.location.search}`);
 const post = self.postMessage.bind(self);
+// The page's content version keys every engine request, so immutable HTTP caching never mixes releases.
+const version = self.location.search;
 let formatBytes;
 const commonPackages = new Map();
 const startupPackages = [
@@ -22,7 +24,7 @@ async function preparePackages() {
   while (nextPackage < startupPackages.length) {
     const asset = startupPackages[nextPackage++];
     if (!allowedPackages.has(asset)) throw new Error('The browser engine startup package is not allowlisted.');
-    const response = await fetch(`/compiler/tex/${asset}`, { signal: controller.signal });
+    const response = await fetch(`/compiler/tex/${asset}${version}`, { signal: controller.signal });
     if (!response.ok) throw new Error(`The browser engine startup package could not load: ${asset}.`);
     const reader = response.body.getReader();
     const chunks = [];
@@ -65,7 +67,7 @@ class PackageXHR {
     this.cached = this.asset === 'swiftlatexpdftex.fmt' ? formatBytes : commonPackages.get(this.asset);
     if (this.asset && !this.cached) {
       this.xhr = new NativeXHR();
-      this.xhr.open('GET', `/compiler/tex/${this.asset}`, false);
+      this.xhr.open('GET', `/compiler/tex/${this.asset}${version}`, false);
     }
   }
   set responseType(value) { if (this.xhr) this.xhr.responseType = value; }
@@ -89,7 +91,9 @@ class PackageXHR {
   getResponseHeader() { return this.asset; }
 }
 self.XMLHttpRequest = PackageXHR;
-importScripts('/compiler/swiftlatexpdftex.js');
+const nativeFetch = self.fetch.bind(self);
+self.fetch = (input, init) => nativeFetch(input === `${self.location.origin}/compiler/swiftlatexpdftex.wasm` ? input + version : input, init);
+importScripts(`/compiler/swiftlatexpdftex.js${version}`);
 self.texlive_endpoint = `${self.location.origin}/pdftex-packages/`;
 // One engine serves every document in the page session. Documents may only write inside /work, which is
 // flushed before each job; the shared package cache and the rest of the filesystem are read-only to TeX.

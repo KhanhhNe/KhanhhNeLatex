@@ -170,7 +170,9 @@ test('conventional virtual filenames resolve exact Google family/style without f
 });
 
 test('native converter resolves bundled absolute OTF paths only through its static manifest', async () => {
-  const self = { location: { href: 'https://app.test/compiler/dvipdf-worker.js?v=fontspec-3', pathname: '/compiler/dvipdf-worker.js', search: '?v=fontspec-3' }, postMessage() {} };
+  const self = { location: { href: 'https://app.test/compiler/dvipdf-worker.js?v=fontspec-3', pathname: '/compiler/dvipdf-worker.js', search: '?v=fontspec-3', origin: 'https://app.test' }, postMessage() {} };
+  const fetches = [];
+  self.fetch = url => fetches.push(url);
   const imports = [];
   const scope = { self, URL, importScripts: url => imports.push(url) };
   runInNewContext(await readFile(new URL('../public/compiler/native-manifest.js', import.meta.url), 'utf8'), scope);
@@ -186,7 +188,11 @@ test('native converter resolves bundled absolute OTF paths only through its stat
   xhr.send();
   assert.equal(xhr.status, 200);
   assert.equal(xhr.getResponseHeader(), 'lmroman10-regular.otf');
-  assert.deepEqual(requests, ['/compiler/native-tex/lmroman10-regular.otf']);
+  assert.deepEqual(requests, ['/compiler/native-tex/lmroman10-regular.otf?v=fontspec-3']);
+  self.fetch('https://app.test/compiler/swiftlatexdvipdfm.wasm');
+  self.fetch('https://app.test/compiler/swiftlatexxetex.wasm');
+  self.fetch('https://app.test/other.wasm');
+  assert.deepEqual(fetches, ['https://app.test/compiler/swiftlatexdvipdfm.wasm?v=fontspec-3', 'https://app.test/compiler/swiftlatexxetex.wasm?v=fontspec-3', 'https://app.test/other.wasm']);
   xhr.open('GET', 'https://texlive.texlyre.org/xetex/47//tex/unlisted.otf');
   xhr.send();
   assert.equal(xhr.status, 301);

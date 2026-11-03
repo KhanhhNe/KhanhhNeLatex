@@ -7,8 +7,8 @@
     },
     {
       "path": "/compiler/dvipdf-worker.js",
-      "size": 262,
-      "sha256": "dea4a7400730c1164797100c767c4ae439032ceff021bbc2e28181229e48fd86"
+      "size": 285,
+      "sha256": "fe7d4986f630e8ffe1c9abe6361b9f56ca7b908c7fb715df78f4d7f9e01636ba"
     },
     {
       "path": "/compiler/format-assets.js",
@@ -37,8 +37,8 @@
     },
     {
       "path": "/compiler/native-package-loader.js",
-      "size": 2020,
-      "sha256": "7bbe47cf78c4c873588d1c8020d0a6051a4fdc8c282633775089e5ba7ff4afcf"
+      "size": 2423,
+      "sha256": "90875848ed52b9b115547db6419b321bac01d95508770f97e30b3b22874207e6"
     },
     {
       "path": "/compiler/native-tex/ckx.map",
@@ -1472,8 +1472,8 @@
     },
     {
       "path": "/compiler/worker.js",
-      "size": 5470,
-      "sha256": "f974b22d99c6af446cca3a45911c7880e4d801511443a1ebae1ee13f9951fb28"
+      "size": 5829,
+      "sha256": "43287fcbea3140a33027dc57613e33e7d2381ed85a8ff75f0f349cfc96c00bec"
     },
     {
       "path": "/compiler/xcolor-source.tar.gz",
@@ -1482,8 +1482,8 @@
     },
     {
       "path": "/compiler/xetex-worker.js",
-      "size": 257,
-      "sha256": "dd00efcce3a3ebe755164bf0697d4a834d078bb28b59d0c551555f8f0ac3c769"
+      "size": 280,
+      "sha256": "4cfcb5f064287053a4844513fe75b7adad9f10be6e8292455c9497f523994590"
     }
   ]
 }

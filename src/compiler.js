@@ -1,7 +1,8 @@
 import { detectFonts, usesFontspec, GoogleFontLoader } from './google-fonts.js';
 import { createEngineWarmup, takeEarlyWarmup, createPdftexWorker } from './engine-start.js';
+import { COMPILER_VERSION } from './compiler-version.js';
 
-const defaultWorkerFactory = engine => engine === 'xetex' ? new Worker('/compiler/native-worker.js?v=startup-4') : createPdftexWorker();
+const defaultWorkerFactory = engine => engine === 'xetex' ? new Worker(`/compiler/native-worker.js?v=${COMPILER_VERSION}`) : createPdftexWorker();
 const CANCELLED = 'Compilation cancelled.';
 const loadingTimedOut = () => new Error('Browser engine loading timed out. Check your connection and try again.');
 

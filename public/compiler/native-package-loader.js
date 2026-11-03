@@ -24,7 +24,7 @@ class NativePackageXHR {
     this.xhr = null;
     if (this.asset && !this.cached) {
       this.xhr = new NativeXHR();
-      this.xhr.open('GET', `/compiler/${this.asset}`, false);
+      this.xhr.open('GET', `/compiler/${this.asset}${self.location.search}`, false);
     }
   }
   set responseType(value) { if (this.xhr) this.xhr.responseType = value; }
@@ -43,3 +43,7 @@ class NativePackageXHR {
   getResponseHeader() { return this.asset?.split('/').pop(); }
 }
 self.XMLHttpRequest = NativePackageXHR;
+// Version the engine WASM like every other compiler asset so it can be cached immutably.
+const nativeFetch = self.fetch.bind(self);
+const engineWasm = new Set(['swiftlatexxetex.wasm', 'swiftlatexdvipdfm.wasm'].map(name => `${self.location.origin}/compiler/${name}`));
+self.fetch = (input, init) => nativeFetch(engineWasm.has(input) ? input + self.location.search : input, init);
