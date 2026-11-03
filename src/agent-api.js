@@ -1,6 +1,7 @@
 // Console/automation API exposed as window.latex. Pure helpers are exported for unit tests;
 // createAgentApi only reads app state through a bridge, so it costs nothing until called.
 import { documentPath, validDocumentCode } from './document-url.js';
+import { latexWarning, logLineKind, warningContinuation } from './compilation-log.js';
 
 export const MAX_SOURCE = 100000;
 const invalidCharacters = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffd]/u;
@@ -102,7 +103,8 @@ export function parseLog(log = '') {
   const errors = [], warnings = [];
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
-    if (line.startsWith('! ')) {
+    const kind = logLineKind(line);
+    if (kind === 'error') {
       const error = { message: line.slice(2).trim(), line: null, context: '' };
       for (let next = index + 1; next < Math.min(lines.length, index + 16); next++) {
         const location = /^l\.(\d+)\s?(.*)$/.exec(lines[next]);
@@ -112,10 +114,10 @@ export function parseLog(log = '') {
       errors.push(error);
       continue;
     }
-    const warning = /^(?:(LaTeX)|(?:Package|Class) (\S+)) Warning: (.*)$/.exec(line);
+    const warning = kind === 'warning' ? latexWarning.exec(line) : null;
     if (warning) {
       let message = warning[3];
-      for (let next = index + 1; next < lines.length && /^\(\S+\)\s|^ {2,}\S/.test(lines[next]); next++) {
+      for (let next = index + 1; next < lines.length && warningContinuation.test(lines[next]); next++) {
         message += ` ${lines[next].replace(/^\(\S+\)\s+/, '').trim()}`;
         index = next;
       }
@@ -123,12 +125,12 @@ export function parseLog(log = '') {
       warnings.push({ type: 'warning', source: warning[2] || 'LaTeX', message: message.trim(), line: input ? Number(input[1]) : null });
       continue;
     }
-    if (/^(Overfull|Underfull) \\[hv]box /.test(line)) {
+    if (kind === 'box') {
       const at = /at lines? (\d+)/.exec(line);
       warnings.push({ type: 'box', source: 'TeX', message: line.trim(), line: at ? Number(at[1]) : null });
       continue;
     }
-    if (line.startsWith('Missing character:')) warnings.push({ type: 'font', source: 'TeX', message: line.trim(), line: null });
+    if (kind === 'font') warnings.push({ type: 'font', source: 'TeX', message: line.trim(), line: null });
   }
   return { errors, warnings };
 }

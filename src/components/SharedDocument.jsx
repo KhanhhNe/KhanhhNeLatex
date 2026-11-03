@@ -3,6 +3,7 @@ import { LatexCompiler } from '../compiler.js';
 import { download } from '../storage.js';
 import LatexEditor from './LatexEditor.jsx';
 import PdfPreview from './PdfPreview.jsx';
+import CompilationLog from './CompilationLog.jsx';
 import './sharing.css';
 
 export default function SharedDocument() {
@@ -96,7 +97,7 @@ export default function SharedDocument() {
       </section>
     </div>
     <footer className="shared-footer">
-      <details className="compile-log"><summary>Compilation log</summary><pre>{log || 'No compilation log available.'}</pre></details>
+      <details className="compile-log"><summary>Compilation log</summary><CompilationLog text={log} /></details>
     </footer>
   </main>;
 }

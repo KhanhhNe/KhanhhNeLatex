@@ -9,6 +9,7 @@ import Icon from './components/Icon.jsx';
 import PdfPreview from './components/PdfPreview.jsx';
 import ShareDialog from './components/ShareDialog.jsx';
 import SharedDocument from './components/SharedDocument.jsx';
+import CompilationLog from './components/CompilationLog.jsx';
 import useWorkspaceResize from './components/workspace-resize.js';
 import { mergeDocuments } from './document-list.js';
 import { documentPath, documentRoute, newDocumentCode, validDocumentCode } from './document-url.js';
@@ -1255,7 +1256,7 @@ function App() {
                 <h1>{compiling ? 'Preparing preview' : 'PDF preview'}</h1><p>{compiling ? 'Typesetting your document…' : 'Compile to see your document here.'}</p><button className="empty-compile" disabled={!current || compiling} onClick={() => compile()}><Icon name="refresh" />Compile your document</button></div>}
             </div>
             <div className="preview-bottom" hidden={!showPreviewBar}>
-              <div className="compile-log-slot"><details ref={compileLog} className="compile-log" open={compileState.includes('See compilation log.')}><summary aria-label={mobile ? 'Compilation log' : undefined}>{mobile ? 'Log' : 'Compilation log'}</summary><pre>{log || 'No compilation log available.'}</pre></details></div>
+              <div className="compile-log-slot"><details ref={compileLog} className="compile-log" open={compileState.includes('See compilation log.')}><summary aria-label={mobile ? 'Compilation log' : undefined}>{mobile ? 'Log' : 'Compilation log'}</summary><CompilationLog text={log} /></details></div>
               {!mobile && <div className="preview-footer"><span title={engineState}>{engineState}</span><label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label><button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>}
             </div>
           </section>
