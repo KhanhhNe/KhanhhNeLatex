@@ -11,6 +11,7 @@ async function nativeState(page) {
     return {
       source: editor.getValue(),
       selections: editor.getSelections(),
+      selectionTexts: editor.getSelections().map(selection => editor.getModel().getValueInRange(selection)),
       actions: editor.getSupportedActions().map(action => action.id),
       wrap: editor.getOption(monaco.editor.EditorOption.wordWrap),
     };
@@ -121,9 +122,7 @@ test('native indentation, comments, line operations, multi-cursors and navigatio
   await sourceEditor(page).press('Escape');
   await sourceEditor(page).press('Control+Home');
   await sourceEditor(page).press('Control+Shift+ArrowRight');
-  const [selection] = (await nativeState(page)).selections;
-  const [startColumn, endColumn] = [selection.startColumn, selection.endColumn].sort((a, b) => a - b);
-  expect((await nativeState(page)).source.slice(startColumn - 1, endColumn - 1).trim()).toBe('gamma');
+  await expect.poll(async () => (await nativeState(page)).selectionTexts[0]?.trim()).toBe('gamma');
   await sourceEditor(page).press('Control+Shift+Enter');
   await expectNativeSource(page, '\ngamma beta gamma');
   await sourceEditor(page).press('Control+m');

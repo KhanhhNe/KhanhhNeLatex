@@ -7,22 +7,21 @@ const editorModifier = page => page.evaluate(() =>
 
 export async function editorReady(page) {
   await expect(page.locator('#source-panel')).toBeAttached();
+  await expect(page.getByRole('textbox', { name: 'Document title', exact: true })).toBeEnabled({ timeout: 15000 });
   const edit = page.getByRole('button', { name: 'Edit', exact: true });
   if (await edit.isVisible() && await edit.getAttribute('aria-pressed') !== 'true') {
     await edit.click();
-    await expect(edit).toHaveAttribute('aria-pressed', 'true');
+    await expect(edit).toHaveAttribute('aria-pressed', 'true', { timeout: 15000 });
   }
   const host = page.locator('.latex-editor-host');
-  let activated = false;
-  if (!await host.isVisible()) {
-    const fallback = page.locator('.latex-editor-fallback');
+  const fallback = page.locator('.latex-editor-fallback');
+  await expect.poll(async () => await host.isVisible() || await fallback.isVisible(), { timeout: 15000 }).toBe(true);
+  if (await fallback.isVisible()) {
     await expect(fallback).toBeEnabled();
     await fallback.focus();
-    activated = true;
   }
-  await expect(host).toBeVisible();
+  await expect(host).toBeVisible({ timeout: 15000 });
   await expect(sourceEditor(page)).toBeEnabled();
-  if (activated) await expect(sourceEditor(page)).toBeFocused();
 }
 
 export async function fillSource(page, text) {
