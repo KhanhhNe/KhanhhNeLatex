@@ -18,6 +18,7 @@ test('compiler version is the content hash of every distributed compiler asset',
 
 test('immutable compiler paths are only requested with the content version', async () => {
   const headers = await read('public/_headers');
+  assert.match(headers, /^\/assets\/\*\n  ! Cache-Control\n  Cache-Control: public, max-age=31536000, immutable$/m);
   const immutable = [...headers.matchAll(/^(\/compiler\/\S+)\n  ! Cache-Control\n(?:  .*\n)*?  Cache-Control: public, max-age=31536000, immutable$/gm)].map(match => match[1]);
   for (const path of ['/compiler/tex/*', '/compiler/native-tex/*', '/compiler/worker.js', '/compiler/swiftlatexpdftex.wasm', '/compiler/formats/*']) assert.ok(immutable.includes(path), path);
   for (const path of ['/compiler/NOTICE.txt', '/compiler/assets.sha256.json', '/compiler/AGPL-3.0.txt']) assert.ok(!immutable.some(rule => rule === path || (rule.endsWith('*') && path.startsWith(rule.slice(0, -1)))), path);

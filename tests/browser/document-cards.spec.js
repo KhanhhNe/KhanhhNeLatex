@@ -54,7 +54,8 @@ for (const [profile, options] of [
       });
       await page.goto('/#workspace');
       await editorReady(page);
-      await page.getByRole('textbox', { name: 'Document title', exact: true }).fill(longTitle);
+      const documentTitle = page.getByRole('textbox', { name: 'Document title', exact: true });
+      await documentTitle.fill(longTitle);
       if (profile === 'desktop') await page.getByRole('button', { name: 'Save to account', exact: true }).click();
       else await (await mobileAction(page, 'Save to account')).click();
       await expect(page.locator('.save-state')).toContainText('Saved to your account');
@@ -66,8 +67,10 @@ for (const [profile, options] of [
       };
       await openDrawer();
       await page.locator('.sidebar .new-document').click();
+      await expect(page.locator('.document-item').filter({ hasText: 'Untitled paper' })).toHaveAttribute('aria-pressed', 'true');
+      await expect(documentTitle).toHaveValue('Untitled paper');
       await editorReady(page);
-      await page.getByRole('textbox', { name: 'Document title', exact: true }).fill('Short notes');
+      await documentTitle.fill('Short notes');
       await expect(page.locator('.save-state')).toContainText('Saved to your account');
       await openDrawer();
 

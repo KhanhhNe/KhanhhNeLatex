@@ -15,7 +15,7 @@ export const preloadLatexEditor = () => engine ||= import('./monaco.js').catch(e
 
 export default function LatexEditor({
   value, onChange, onSave, onCompile, ariaLabel = 'LaTeX source',
-  documentKey, readOnly = false, loading = false, apiRef,
+  documentKey, readOnly = false, loading = false, deferLoading = false, onActivate, apiRef,
 }) {
   const host = useRef(null);
   const metricsProbe = useRef(null);
@@ -41,6 +41,7 @@ export default function LatexEditor({
   }
 
   useEffect(() => {
+    if (deferLoading) return;
     let disposed = false;
     let instance, model, change, resize, guard, handle;
     setReady(false);
@@ -155,7 +156,7 @@ export default function LatexEditor({
       editor.current = null;
       if (apiRef?.current === handle && handle) apiRef.current = null;
     };
-  }, [documentKey, attempt]);
+  }, [documentKey, attempt, deferLoading]);
 
   useEffect(() => {
     const instance = editor.current;
@@ -195,6 +196,7 @@ export default function LatexEditor({
       aria-label={ariaLabel} aria-describedby="source-shortcuts"
       value={value} readOnly={readOnly} disabled={loading} maxLength={100000}
       spellCheck={false} autoCapitalize="off" autoCorrect="off"
+      onFocus={onActivate}
       onChange={event => {
         if (validSource(event.target.value)) { setError(''); onChange(event.target.value); }
         else setError('Source must be valid text, at most 100,000 characters. The last edit was not accepted.');

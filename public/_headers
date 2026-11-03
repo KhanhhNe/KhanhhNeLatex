@@ -4,6 +4,9 @@
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self'; connect-src 'self' https://fonts.gstatic.com; font-src 'self' data:; frame-src blob:; object-src blob:; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+/assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
 /compiler/*
   Cache-Control: public, max-age=3600
 # Requested only with ?v=<COMPILER_VERSION> (content hash of every compiler asset), so a release never reuses old entries.

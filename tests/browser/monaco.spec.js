@@ -11,6 +11,7 @@ async function nativeState(page) {
     return {
       source: editor.getValue(),
       selections: editor.getSelections(),
+      selectionTexts: editor.getSelections().map(selection => editor.getModel().getValueInRange(selection)),
       actions: editor.getSupportedActions().map(action => action.id),
       wrap: editor.getOption(monaco.editor.EditorOption.wordWrap),
     };
@@ -121,8 +122,7 @@ test('native indentation, comments, line operations, multi-cursors and navigatio
   await sourceEditor(page).press('Escape');
   await sourceEditor(page).press('Control+Home');
   await sourceEditor(page).press('Control+Shift+ArrowRight');
-  const [selection] = (await nativeState(page)).selections;
-  expect((await nativeState(page)).source.slice(selection.startColumn - 1, selection.endColumn - 1).trim()).toBe('gamma');
+  await expect.poll(async () => (await nativeState(page)).selectionTexts[0]?.trim()).toBe('gamma');
   await sourceEditor(page).press('Control+Shift+Enter');
   await expectNativeSource(page, '\ngamma beta gamma');
   await sourceEditor(page).press('Control+m');
@@ -190,4 +190,32 @@ test('loading Monaco leaves an immediately editable fallback and preserves its s
   await expect(sourceEditor(page)).toBeFocused();
   await page.keyboard.insertText(' after handoff');
   await expectSource(page, 'fallback edit after handoff');
+});
+
+test('the first workspace PDF renders before Monaco downloads, with a usable text fallback', async ({ page }) => {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const monacoRequests = [];
+  await page.addInitScript(() => {
+    window.firstPdfRenderedAt = null;
+    document.addEventListener('load', event => {
+      if (event.detail === 'pdf-rendered') window.firstPdfRenderedAt = Date.now();
+    }, true);
+  });
+  await page.route(/\/assets\/monaco-[^/]+\.js$/, async route => {
+    monacoRequests.push(Date.now());
+    await held;
+    await route.continue();
+  });
+  try {
+    await page.goto('/#workspace', { waitUntil: 'domcontentloaded' });
+    const fallback = page.locator('.latex-editor-fallback');
+    await expect(fallback).toBeEnabled();
+    await expect(page.locator('.pdf-viewer:not(.pending) canvas').first()).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => monacoRequests.length).toBe(1);
+    const pdfRenderedAt = await page.evaluate(() => window.firstPdfRenderedAt);
+    expect(monacoRequests[0]).toBeGreaterThanOrEqual(pdfRenderedAt);
+    await expect(fallback).toBeEnabled();
+  } finally { release(); }
+  await editorReady(page);
 });
