@@ -64,6 +64,7 @@ function App() {
   const [mobile, setMobile] = useState(() => matchMedia('(max-width: 1050px)').matches);
   const [tab, setTab] = useState('preview');
   const [editorOpened, setEditorOpened] = useState(false);
+  const [monacoDeferred, setMonacoDeferred] = useState(true);
   const [sidebar, setSidebar] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -608,6 +609,7 @@ function App() {
     discardPendingViewer();
     compileRequest.current++;
     compiler.current.cancel();
+    setMonacoDeferred(false);
     setCompiling(false);
     setCompileState('Compilation cancelled.');
     setLog('');
@@ -677,6 +679,7 @@ function App() {
       });
     } catch (reason) {
       if (run !== compileRequest.current) return { superseded: true };
+      setMonacoDeferred(false);
       const status = reason.message === 'Compilation cancelled.' ? reason.message
         : reason.message.startsWith('LaTeX') ? 'LaTeX could not compile. See compilation log.'
           : reason.message.startsWith('Compilation timed out') ? 'Compilation timed out. See compilation log.'
@@ -1188,7 +1191,7 @@ function App() {
           </div>
           <div className="mobile-tabs" role="group" aria-label="Document mode">
             <button className={tab === 'preview' ? 'active' : ''} aria-pressed={tab === 'preview'} aria-controls="preview-panel" onClick={() => setTab('preview')}>Read</button>
-            <button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => { setEditorOpened(true); setTab('source'); }}>Edit</button>
+            <button className={tab === 'source' ? 'active' : ''} aria-pressed={tab === 'source'} aria-controls="source-panel" onClick={() => { setEditorOpened(true); setTab('source'); setMonacoDeferred(false); }}>Edit</button>
           </div>
           <div className="document-actions">
             <button className="compile-button" aria-label={compiling ? 'Cancel' : 'Compile'} title={compiling ? 'Cancel compilation' : 'Compile (Ctrl/Cmd+Enter)'} aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!current} onClick={compiling ? cancelCompile : () => compile()}>
@@ -1224,6 +1227,7 @@ function App() {
             <div className="editor-container">
               {(!mobile || editorOpened) && <LatexEditor documentKey={`${current?.id || 'loading'}:${generation.current}`}
                 value={current?.source || ''} loading={!current} apiRef={editorApi}
+                deferLoading={monacoDeferred} onActivate={() => setMonacoDeferred(false)}
                 onChange={(source, changes, before) => update({ source }, changes, before)}
                 onSave={() => compile()} onCompile={() => compile()} />}
             </div>
@@ -1243,13 +1247,17 @@ function App() {
                   setPageStatus(info ? { url: viewer.url, ...info } : null);
                 }}
                 onError={() => {
+                  setMonacoDeferred(false);
                   if (pendingViewer.current?.url !== viewer.url) return;
                   discardPendingViewer();
                   notice(new Error('The new PDF preview could not load. The previous preview is still available; export the new PDF or compile again.'));
                 }}
                 onReady={info => {
                   for (const item of [viewer, shownPdf.current, pendingViewer.current]) if (item?.url === viewer.url && info?.pages) item.pages = info.pages;
-                  if (shownPdf.current?.url === viewer.url) emitPreview(shownPdf.current);
+                  if (shownPdf.current?.url === viewer.url) {
+                    setMonacoDeferred(false);
+                    emitPreview(shownPdf.current);
+                  }
                   revealPreview(viewer.url);
                 }} />)}</div> :
               <div className="empty-preview"><Icon name="file" />
