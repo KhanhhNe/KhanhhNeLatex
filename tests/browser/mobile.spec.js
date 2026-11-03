@@ -3,9 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { editorReady, fillSource } from './source-editor.js';
 
-test.use({ channel: 'chromium', deviceScaleFactor: 3 });
-// Each case owns its browser/context; share the two CI slots instead of leaving a serial mobile tail.
-test.describe.configure({ mode: 'parallel' });
+test.use({ deviceScaleFactor: 3 });
+// Only the fixture-managed real-PDF case needs a channel; other cases launch their own engines.
+const chromiumTest = test.extend({ channel: 'chromium' });
 
 const sizes = [
   ['portrait', 390, 844],
@@ -154,7 +154,7 @@ for (const browserType of [chromium, webkit]) {
   }
 }
 
-test('mobile real PDF, recompilation, error log, cancel and exports preserve content', async ({ page }) => {
+chromiumTest('mobile real PDF, recompilation, error log, cancel and exports preserve content', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#workspace');
   await editorReady(page);
