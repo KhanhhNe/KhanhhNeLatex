@@ -21,7 +21,7 @@ const release = canvas => {
   canvas.width = canvas.height = 0;
 };
 
-export default function PdfPreview({ viewer, pending, onReady, onError, onPageChange, viewState }) {
+export default function PdfPreview({ viewer, pending, onReady, onError, onPageChange, viewState, status }) {
   const sync = useRef(null);
   const root = useRef(null);
   const viewport = useRef(null);
@@ -511,12 +511,15 @@ export default function PdfPreview({ viewer, pending, onReady, onError, onPageCh
   return <div ref={root} data-src={viewer.url} title={pending ? 'Loading compiled PDF' : 'Compiled PDF'}
     className={`pdf-viewer${pending ? ` pending${viewer.ready ? ' ready' : ''}` : ''}`}
     aria-hidden={pending ? true : undefined}>
-    <div className="pdf-zoom-toolbar" role="group" aria-label="PDF zoom">
-      <button aria-label="Zoom out" disabled={pending} onClick={() => controls.current?.out()}>-</button>
-      <output aria-label="PDF zoom level">100%</output>
-      <button aria-label="Zoom in" disabled={pending} onClick={() => controls.current?.in()}>+</button>
-      <button disabled={pending} onClick={() => controls.current?.fit()}>Fit width</button>
-      <a href={viewer.url} target="_blank" rel="noopener" tabIndex={pending ? -1 : 0}>Open PDF</a>
+    <div className="pdf-zoom-toolbar">
+      <div className="pdf-status-slot">{!pending && status}</div>
+      <div className="pdf-zoom-controls" role="group" aria-label="PDF zoom">
+        <button aria-label="Zoom out" disabled={pending} onClick={() => controls.current?.out()}>-</button>
+        <output aria-label="PDF zoom level">100%</output>
+        <button aria-label="Zoom in" disabled={pending} onClick={() => controls.current?.in()}>+</button>
+        <button disabled={pending} onClick={() => controls.current?.fit()}>Fit width</button>
+        <a href={viewer.url} target="_blank" rel="noopener" tabIndex={pending ? -1 : 0}>Open PDF</a>
+      </div>
     </div>
     {error && <div className="pdf-render-error" role="alert">{error}
       <button onClick={() => setAttempt(value => value + 1)}>Retry preview</button></div>}

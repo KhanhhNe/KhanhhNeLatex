@@ -41,6 +41,39 @@ async function expectDominantPage(page, total) {
   await expect(status(page)).toHaveText(`Page ${number}/${total}`);
 }
 
+test('combined preview bar matches editor metrics and stays reachable in narrow panes', async ({ page }) => {
+  await page.goto('/#workspace');
+  await page.waitForFunction(() => Boolean(window.latex));
+  await page.evaluate(() => latex.ready());
+  await compile(page, 5);
+  const bar = page.locator(`${shown} .pdf-zoom-toolbar`);
+  await expect(bar.locator('.preview-status')).toHaveCount(1);
+  const metrics = await page.evaluate(() => {
+    const read = selector => {
+      const element = document.querySelector(selector), style = getComputedStyle(element);
+      return { height: element.getBoundingClientRect().height, font: style.fontSize, color: style.color,
+        background: style.backgroundColor, padding: style.padding };
+    };
+    return { editor: read('.editor-footer'), preview: read('.pdf-zoom-toolbar') };
+  });
+  expect(metrics.preview).toEqual(metrics.editor);
+  expect(metrics.preview.height).toBe(28);
+  expect(metrics.preview.font).toBe('11px');
+  for (const width of [1440, 1100]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(bar).toBeInViewport();
+    expect(await bar.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    for (const name of ['Zoom out', 'Zoom in', 'Fit width'])
+      await expect(bar.getByRole('button', { name, exact: true })).toBeInViewport();
+    await expect(bar.getByRole('link', { name: 'Open PDF', exact: true })).toBeInViewport();
+  }
+  const splitter = page.getByRole('separator', { name: 'Source editor width', exact: true });
+  await splitter.focus();
+  await splitter.press('End');
+  expect(await bar.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await expect(bar.getByRole('link', { name: 'Open PDF', exact: true })).toBeInViewport();
+});
+
 for (const mobile of [false, true]) {
   test(`${mobile ? 'mobile' : 'desktop'} page status follows dominant paper, zoom, resize, replacement and document switches`, async ({ browser, baseURL }) => {
     const { defaultBrowserType, ...phone } = devices['iPhone 13'];
@@ -55,6 +88,19 @@ for (const mobile of [false, true]) {
       await compile(page, 12);
       await expect(status(page)).toHaveText('Page 1/12');
       await expect(status(page)).toBeVisible();
+      const bar = page.locator(`${shown} .pdf-zoom-toolbar`);
+      await expect(bar.locator('.preview-status')).toHaveCount(1);
+      if (mobile) {
+        for (const control of await bar.locator('button,a').all()) {
+          await expect(control).toBeInViewport();
+          const box = await control.boundingBox();
+          expect(box.height).toBeGreaterThanOrEqual(44);
+          expect(box.width).toBeGreaterThanOrEqual(44);
+        }
+        expect(await bar.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+        if (process.env.PAGE_STATUS_ARTIFACTS)
+          await page.screenshot({ path: join(process.env.PAGE_STATUS_ARTIFACTS, 'combined-status-mobile-portrait.png') });
+      }
       expect(await status(page).evaluate(node => Boolean(node.closest('[role="status"],[aria-live]')))).toBe(false);
       await goToPage(page, 6);
       await expect(status(page)).toHaveText('Page 6/12');

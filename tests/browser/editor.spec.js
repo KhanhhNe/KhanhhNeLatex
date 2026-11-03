@@ -495,7 +495,7 @@ test('editor chrome, source and dialogs use one restrained visual system', async
   await expect(page.locator('.editor-panel')).toHaveCSS('background-color', 'rgb(24, 32, 39)');
   await expect(page.locator('.document-toolbar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(page.locator('.preview-panel')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
-  await expect(page.locator('.preview-status')).toHaveCSS('background-color', 'rgb(32, 32, 32)');
+  await expect(page.locator('.preview-status')).toHaveCSS('background-color', 'rgb(24, 32, 39)');
   await expect(page.locator('.compile-log')).toHaveCSS('background-color', 'rgb(35, 42, 48)');
   await expect(page.locator('.preview-footer')).toHaveCSS('background-color', 'rgb(35, 42, 48)');
   const pdf = page.locator('.pdf-viewer[title="Compiled PDF"]');

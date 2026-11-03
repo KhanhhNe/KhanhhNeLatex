@@ -18,6 +18,10 @@ export default function SharedDocument() {
   const url = useRef(null);
   const mounted = useRef(false);
   const viewState = useRef(null);
+  const previewStatus = <div className="preview-status">
+    <span className="preview-status-message" role="status" title={status}>{status}</span>
+    {pdf && pageStatus?.url === pdf.url && <span className="preview-page-status">Page {pageStatus.page}/{pageStatus.total}</span>}
+  </div>;
 
   async function compile(snapshot = document) {
     if (!snapshot || compiler.current.active) return;
@@ -83,15 +87,15 @@ export default function SharedDocument() {
         <LatexEditor documentKey="shared" value={document.source} readOnly onChange={() => {}} onCompile={() => compile()} onSave={() => compile()} />
       </section>}
       <section className="preview-panel" aria-label="PDF preview">
-        <div className="pdf-area">{pdf ? <div className="pdf-stack"><PdfPreview viewer={pdf} viewState={viewState}
+        {!pdf && previewStatus}
+        <div className="pdf-area">{pdf ? <div className="pdf-stack"><PdfPreview viewer={pdf} viewState={viewState} status={previewStatus}
           onPageChange={info => { if (url.current === pdf.url) setPageStatus(info ? { url: pdf.url, ...info } : null); }}
           onReady={() => setStatus('Compiled in your browser. Shared document is read-only.')}
           onError={() => setError('PDF preview could not load. You can still export the PDF.')} /></div>
           : <p>{compiling ? 'Typesetting shared document in your browser...' : 'No PDF preview available.'}</p>}</div>
       </section>
     </div>
-    <footer className="shared-footer"><div className="shared-status"><p role="status">{status}</p>
-      {pdf && pageStatus?.url === pdf.url && <span className="preview-page-status">Page {pageStatus.page}/{pageStatus.total}</span>}</div>
+    <footer className="shared-footer">
       <details className="compile-log"><summary>Compilation log</summary><pre>{log || 'No compilation log available.'}</pre></details>
     </footer>
   </main>;

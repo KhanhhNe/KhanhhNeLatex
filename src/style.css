@@ -90,11 +90,8 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
 .compile-button:hover:not(:disabled){background:#435663}
 .spinner{display:inline-block;width:16px;height:16px;border:1.5px solid #9aa8b2;border-top-color:currentColor;border-radius:50%;animation:spin 1s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
-.preview-status{display:grid;grid-template-columns:1fr auto;column-gap:8px;flex-shrink:0;padding:5px 12px;min-height:34px;color:#b7c1ca;font-size:.6875rem;line-height:1.5;text-align:center;background:var(--surface)}
-.preview-status-reserve,.preview-status-message{grid-area:1/1}
-.preview-status-reserve{visibility:hidden;pointer-events:none}
-.preview-status-reserve::before{content:"Compiled in your browser \00b7 60.00 s / Loading new preview... / Preview is out of date"}
-.preview-status-message{display:block;align-self:center;overflow-wrap:anywhere}
+.preview-status{display:flex;align-items:center;gap:8px;min-width:0;min-height:28px;padding:0 8px;color:#afbbc5;font-size:.6875rem;background:var(--source)}
+.preview-status-message{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .preview-page-status{align-self:center;white-space:nowrap;font-variant-numeric:tabular-nums}
 .status-dot,.working-dot{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:6px;vertical-align:middle;background:#8ebca4}
 .working-dot{background:#a2bfd3}
@@ -186,7 +183,6 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
   .document-actions .quiet .ui-icon{display:none}
   .document-actions .compile-button{width:44px;min-width:44px}
   .document-actions .action-label{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-  .preview-status{font-size:.6875rem;padding:5px 10px}
   .pdf-area{padding:0 8px 8px}
   .editor-footer{padding:2px 10px;min-height:36px}
   .editor-footer #source-shortcuts{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -227,8 +223,6 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
   .workspace-view .document-title{flex-direction:row;flex-wrap:nowrap;align-items:center}
   .workspace-view .document-title input{flex:1;width:0}
   .workspace-view .save-state{flex:none;max-width:35%;font-size:.625rem}
-  .workspace-view .preview-status{min-height:24px;padding:2px 10px}
-  .workspace-view .preview-status-reserve{display:none}
 }
 @media(max-width:1050px) and (max-height:359px){
   .workspace-view .panels{min-height:300px}
@@ -288,21 +282,17 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
   .workspace-view.reading .document-toolbar{position:absolute;top:0;left:0;right:0;z-index:4;transition:transform .2s ease}
   .workspace-view.reading.chrome-hidden .document-toolbar{transform:translateY(-100%)}
   .workspace-view.reading .pdf-viewport{padding-top:48px}
-  .workspace-view.reading .pdf-viewport::after{content:"";display:block;height:56px}
+  .workspace-view.reading .pdf-viewport::after{content:"";display:block;height:80px}
   .workspace-view.reading .empty-preview{padding-top:56px}
-  .workspace-view .pdf-zoom-toolbar{position:absolute;left:50%;bottom:8px;z-index:2;min-height:44px;padding:0 6px;border:1px solid #47535c;border-radius:24px;background:#232a30eb;box-shadow:0 2px 12px #0007;transform:translateX(-50%);transition:opacity .2s,transform .2s}
-  .workspace-view .pdf-zoom-toolbar a{display:none}
+  .workspace-view .pdf-zoom-toolbar{position:absolute;left:0;right:0;bottom:0;z-index:2;border-top:1px solid var(--source-border);transition:opacity .2s,transform .2s}
   .workspace-view .pdf-zoom-toolbar button{white-space:nowrap}
-  .workspace-view.chrome-hidden .pdf-zoom-toolbar{opacity:0;pointer-events:none;transform:translate(-50%,12px)}
-  .workspace-view .pdf-zoom-toolbar:focus-within{opacity:1;pointer-events:auto}
+  .workspace-view.chrome-hidden .pdf-zoom-toolbar{visibility:hidden;opacity:0;pointer-events:none;transform:translateY(12px)}
+  .workspace-view .pdf-zoom-toolbar:focus-within{visibility:visible;opacity:1;pointer-events:auto;transform:none}
   .workspace-view .preview-panel{position:relative}
   .workspace-view .preview-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;align-items:center}
-  .workspace-view .preview-panel:has(.preview-bottom:not([hidden])) .pdf-zoom-toolbar{bottom:54px}
+  .workspace-view .preview-panel:has(.preview-bottom:not([hidden])) .pdf-zoom-toolbar{bottom:44px}
   .workspace-view .compile-log-slot{min-width:72px}
   .workspace-view .compile-log-slot .compile-log{width:72px;padding:0 8px}
-  .workspace-view .preview-bottom .preview-status{display:flex;align-items:center;flex:1;min-width:0;min-height:44px;padding:2px 10px 2px 4px;background:none;text-align:left;line-height:1.35}
-  .workspace-view .preview-bottom .preview-status-reserve{display:none}
-  .workspace-view .preview-bottom .preview-status-message{flex:1;min-width:0}
   .workspace-view .sidebar{z-index:5}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
