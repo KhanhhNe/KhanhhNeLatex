@@ -30,7 +30,10 @@ jobs:
       - run: npm run db:check
       - run: npm run build
       - run: npm run db:local
-      - run: npm run test:e2e
+      - run: |
+          node -e "const os = require('node:os'); console.log(JSON.stringify({ cpus: os.availableParallelism(), memoryGiB: os.totalmem() / 2 ** 30, workers: 2 }))"
+          npm run test:e2e
+        name: Run npm run test:e2e
         id: e2e
         env:
           CI: true

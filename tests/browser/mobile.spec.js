@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { editorReady, fillSource } from './source-editor.js';
 
 test.use({ channel: 'chromium', deviceScaleFactor: 3 });
+// Each case owns its browser/context; share the two CI slots instead of leaving a serial mobile tail.
+test.describe.configure({ mode: 'parallel' });
 
 const sizes = [
   ['portrait', 390, 844],
