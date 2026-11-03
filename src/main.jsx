@@ -58,6 +58,7 @@ function App() {
   const [log, setLog] = useState('');
   const [pdf, setPdf] = useState(null);
   const [pendingPdf, setPendingPdf] = useState(null);
+  const [pageStatus, setPageStatus] = useState(null);
   const [stale, setStale] = useState(false);
   const [mobile, setMobile] = useState(() => matchMedia('(max-width: 1050px)').matches);
   const [tab, setTab] = useState('preview');
@@ -1008,7 +1009,7 @@ function App() {
     return () => window.removeEventListener('keydown', keys);
   }, []);
   const previewSettled = Boolean(pdf) && !stale && !compiling && !pendingPdf && compileState.startsWith('Compiled in your browser');
-  const showPreviewBar = !mobile || !previewSettled || logShown;
+  const showPreviewBar = !mobile || !previewSettled || logShown || !chromeHidden;
   const immersive = mobile && view === 'workspace' && tab === 'preview' && Boolean(pdf) && !menu && !sidebar;
   useEffect(() => { if (!immersive) setChromeHidden(false); }, [immersive]);
   useEffect(() => { setChromeHidden(false); }, [compileState, stale]);
@@ -1102,6 +1103,7 @@ function App() {
   const previewStatus = <div className="preview-status">
     <span className="preview-status-reserve" aria-hidden="true" />
     <div className="preview-status-message" role="status" aria-atomic="true"><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
+    {pdf && pageStatus?.url === pdf.url && <span className="preview-page-status">Page {pageStatus.page}/{pageStatus.total}</span>}
   </div>;
 
   return <div className="app">
@@ -1234,6 +1236,10 @@ function App() {
             <div className="pdf-area">{pdf ? <div className="pdf-stack">{[pdf, pendingPdf].filter(Boolean).map(viewer =>
               <PdfPreview key={viewer.url} viewer={viewer} pending={viewer.url !== pdf.url}
                 viewState={previewView}
+                onPageChange={info => {
+                  if (shownPdf.current?.url !== viewer.url) return;
+                  setPageStatus(info ? { url: viewer.url, ...info } : null);
+                }}
                 onError={() => {
                   if (pendingViewer.current?.url !== viewer.url) return;
                   discardPendingViewer();

@@ -12,6 +12,7 @@ export default function SharedDocument() {
   const [sourceShown, setSourceShown] = useState(false);
   const [compiling, setCompiling] = useState(false);
   const [pdf, setPdf] = useState(null);
+  const [pageStatus, setPageStatus] = useState(null);
   const [log, setLog] = useState('');
   const compiler = useRef(null);
   const url = useRef(null);
@@ -83,12 +84,14 @@ export default function SharedDocument() {
       </section>}
       <section className="preview-panel" aria-label="PDF preview">
         <div className="pdf-area">{pdf ? <div className="pdf-stack"><PdfPreview viewer={pdf} viewState={viewState}
+          onPageChange={info => { if (url.current === pdf.url) setPageStatus(info ? { url: pdf.url, ...info } : null); }}
           onReady={() => setStatus('Compiled in your browser. Shared document is read-only.')}
           onError={() => setError('PDF preview could not load. You can still export the PDF.')} /></div>
           : <p>{compiling ? 'Typesetting shared document in your browser...' : 'No PDF preview available.'}</p>}</div>
       </section>
     </div>
-    <footer className="shared-footer"><p role="status">{status}</p>
+    <footer className="shared-footer"><div className="shared-status"><p role="status">{status}</p>
+      {pdf && pageStatus?.url === pdf.url && <span className="preview-page-status">Page {pageStatus.page}/{pageStatus.total}</span>}</div>
       <details className="compile-log"><summary>Compilation log</summary><pre>{log || 'No compilation log available.'}</pre></details>
     </footer>
   </main>;

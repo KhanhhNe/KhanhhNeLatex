@@ -21,7 +21,7 @@ const release = canvas => {
   canvas.width = canvas.height = 0;
 };
 
-export default function PdfPreview({ viewer, pending, onReady, onError, viewState }) {
+export default function PdfPreview({ viewer, pending, onReady, onError, onPageChange, viewState }) {
   const sync = useRef(null);
   const root = useRef(null);
   const viewport = useRef(null);
@@ -29,7 +29,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
   const pages = useRef(null);
   const controls = useRef(null);
   const handlers = useRef(null);
-  handlers.current = { pending, onReady, onError };
+  handlers.current = { pending, onReady, onError, onPageChange };
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -42,6 +42,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
     let lastWheel = -Infinity, wheelZoom = false, dirty = false, dprQuery;
     // Pages are laid out in real CSS pixels at layoutZoom; transforms only bridge an unsettled zoom.
     let layoutZoom = 1, layoutDpr = 0;
+    let reportedPage = 0;
     const layout = [], cache = new Map();
     const zooming = () => Boolean(pinch || gesture);
     const fail = reason => {
@@ -54,6 +55,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       pdfWorker?.destroy();
       worker?.terminate();
       setError(`PDF preview could not render: ${reason.message}. Export or open the PDF to view it.`);
+      if (!handlers.current.pending) handlers.current.onPageChange?.(null);
       handlers.current.onError(reason);
     };
     const remember = () => {
@@ -76,12 +78,33 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
         const index = layout.findIndex(page => page.y + page.height >= (saved?.y || 0));
         return layout.length ? [Math.max(0, index)] : [];
       }
-      const top = scroller.scrollTop / zoom, bottom = top + scroller.clientHeight / zoom;
+      const top = (scroller.scrollTop - sheet.current.offsetTop) / zoom, bottom = top + scroller.clientHeight / zoom;
+      const left = (scroller.scrollLeft - sheet.current.offsetLeft) / zoom, right = left + scroller.clientWidth / zoom;
       const center = (top + bottom) / 2;
-      return layout.map((page, index) => ({ index, distance: Math.abs(page.y + page.height / 2 - center),
-        visible: page.y < bottom && page.y + page.height > top }))
-        .filter(page => page.visible).sort((a, b) => a.distance - b.distance)
-        .slice(0, maxPages).map(page => page.index);
+      const ranked = [];
+      for (let index = 0; index < layout.length; index++) {
+        const page = layout[index];
+        if (page.y >= bottom) break;
+        if (page.y + page.height <= top) continue;
+        const across = Math.max(0, Math.min(page.width, right) - Math.max(0, left));
+        const down = Math.max(0, Math.min(page.y + page.height, bottom) - Math.max(page.y, top));
+        if (across > 0 && down > 0)
+          ranked.push({ index, across, area: across * down, distance: Math.abs(page.y + page.height / 2 - center) });
+      }
+      ranked.sort((a, b) => b.area - a.area || a.distance - b.distance);
+      // Keep the current page at near-equal boundaries instead of flickering on fractional scroll pixels.
+      const previous = ranked.find(page => page.index + 1 === reportedPage);
+      if (previous && ranked[0].area - previous.area <= 2 * ranked[0].across / zoom) {
+        ranked.splice(ranked.indexOf(previous), 1);
+        ranked.unshift(previous);
+      }
+      return ranked.slice(0, maxPages).map(page => page.index);
+    };
+    const reportPage = (index = visible()[0]) => {
+      if (!ready || failed || disposed || handlers.current.pending || !scroller.clientWidth || !scroller.clientHeight ||
+        index === undefined || index + 1 === reportedPage) return;
+      reportedPage = index + 1;
+      handlers.current.onPageChange?.({ page: reportedPage, total: document.numPages });
     };
     const relayout = () => {
       const dpr = ratio();
@@ -134,6 +157,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       dirty = false;
       relayout();
       const run = generation, wanted = visible(), stale = () => disposed || failed || run !== generation;
+      reportPage(wanted[0]);
       // Keep only viewport pages; no full-document canvas stack or per-event PDF work.
       for (const [index, record] of cache) {
         if (wanted.includes(index)) continue;
@@ -218,6 +242,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
         scroller.scrollLeft = anchorX * zoom + sheet.current.offsetLeft - x;
         scroller.scrollTop = anchorY * zoom + sheet.current.offsetTop - y;
         remember();
+        reportPage();
       });
       schedule();
     };
@@ -305,6 +330,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
         paint();
         if (pinch) place();
         remember();
+        reportPage();
       });
     };
     const touchEnd = event => {
@@ -313,6 +339,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       paint();
       place();
       remember();
+      reportPage();
       pinch = null;
       schedule();
     };
@@ -331,6 +358,7 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
     };
     const scroll = () => {
       remember();
+      reportPage();
       if (failed || disposed || zooming() || timer) return;
       // Scroll is throttled, not debounced: newly visible pages fill during a long pan.
       timer = setTimeout(() => { timer = 0; rasterize(); }, settleDelay);
@@ -357,13 +385,17 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       }
       restored = true;
       remember();
+      reportPage();
     };
     // A replacement PDF adopts the shown preview's latest position, not the one from when it began loading.
     const drifted = () => {
       const latest = viewState.current;
       if (!latest || !restored || !scroller.clientWidth) return false;
       if (latest.fitted !== fitted || (!latest.fitted && Math.abs(latest.zoom - zoom) > .001)) return true;
-      return Math.abs(latest.x * zoom - scroller.scrollLeft) > 1 || Math.abs(latest.y * zoom - scroller.scrollTop) > 1;
+      // Shorter replacements cannot reach a position beyond their final page.
+      const x = clamp(latest.x * zoom, 0, scroller.scrollWidth - scroller.clientWidth);
+      const y = clamp(latest.y * zoom, 0, scroller.scrollHeight - scroller.clientHeight);
+      return Math.abs(x - scroller.scrollLeft) > 1 || Math.abs(y - scroller.scrollTop) > 1;
     };
     const adopt = () => {
       saved = viewState.current;
@@ -386,11 +418,16 @@ export default function PdfPreview({ viewer, pending, onReady, onError, viewStat
       ready = true;
       container.dispatchEvent(new CustomEvent('load', { detail: 'pdf-rendered' }));
       remember();
+      reportPage();
     };
-    sync.current = () => { if (ready && !disposed && !failed && drifted()) { adopt(); schedule(); } };
+    sync.current = () => {
+      if (ready && !disposed && !failed && drifted()) { adopt(); schedule(); }
+      reportPage();
+    };
     const observer = new ResizeObserver(() => {
       if (!restored) restore();
       else if (fitted) fit();
+      if (!frame) reportPage();
       schedule();
     });
     observer.observe(scroller);

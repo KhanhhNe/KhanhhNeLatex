@@ -90,11 +90,12 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
 .compile-button:hover:not(:disabled){background:#435663}
 .spinner{display:inline-block;width:16px;height:16px;border:1.5px solid #9aa8b2;border-top-color:currentColor;border-radius:50%;animation:spin 1s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
-.preview-status{display:grid;grid-template-columns:1fr;flex-shrink:0;padding:5px 12px;min-height:34px;color:#b7c1ca;font-size:.6875rem;line-height:1.5;text-align:center;background:var(--surface)}
+.preview-status{display:grid;grid-template-columns:1fr auto;column-gap:8px;flex-shrink:0;padding:5px 12px;min-height:34px;color:#b7c1ca;font-size:.6875rem;line-height:1.5;text-align:center;background:var(--surface)}
 .preview-status-reserve,.preview-status-message{grid-area:1/1}
 .preview-status-reserve{visibility:hidden;pointer-events:none}
 .preview-status-reserve::before{content:"Compiled in your browser \00b7 60.00 s / Loading new preview... / Preview is out of date"}
 .preview-status-message{display:block;align-self:center;overflow-wrap:anywhere}
+.preview-page-status{align-self:center;white-space:nowrap;font-variant-numeric:tabular-nums}
 .status-dot,.working-dot{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:6px;vertical-align:middle;background:#8ebca4}
 .working-dot{background:#a2bfd3}
 .preview-status strong{font-weight:500;color:#e2bf7e}
@@ -301,6 +302,7 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
   .workspace-view .compile-log-slot .compile-log{width:72px;padding:0 8px}
   .workspace-view .preview-bottom .preview-status{display:flex;align-items:center;flex:1;min-width:0;min-height:44px;padding:2px 10px 2px 4px;background:none;text-align:left;line-height:1.35}
   .workspace-view .preview-bottom .preview-status-reserve{display:none}
+  .workspace-view .preview-bottom .preview-status-message{flex:1;min-width:0}
   .workspace-view .sidebar{z-index:5}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

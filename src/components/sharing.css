@@ -14,6 +14,7 @@
 .shared-panels .latex-editor{flex:1}
 .shared-footer{padding:4px 12px;border-top:1px solid var(--border)}
 .shared-footer p{margin:4px 0;font-size:.75rem}
+.shared-status{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.75rem}
 .shared-footer .compile-log pre{max-height:160px;overflow:auto}
 @media(max-width:1050px){
   .shared-toolbar{gap:6px}
