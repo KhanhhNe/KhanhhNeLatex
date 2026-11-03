@@ -240,6 +240,14 @@ test('signed-out Ctrl/Cmd+S compiles without opening sign-in or sending a save',
   await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(2);
   await sourceEditor(page).press('Meta+s');
   await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(3);
+  await sourceEditor(page).press('Control+Home');
+  await sourceEditor(page).press('Control+Shift+Enter');
+  await expect.poll(() => page.evaluate(() => latex.read().startsWith('\n'))).toBe(true);
+  await sourceEditor(page).press('Control+Alt+s');
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => window.engineJobs.length)).toBe(3);
+  await sourceEditor(page).press('Control+Enter');
+  await expect.poll(() => page.evaluate(() => window.engineJobs.length)).toBe(4);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(writes).toEqual([]);
 });
@@ -639,16 +647,21 @@ test('a failed local write keeps the current source exportable and retries the l
   await expectSource(page, 'latest recovered source');
 });
 
-test('Tab respects the source limit, Shift+Tab leaves the editor, and mobile export stays accessible', async ({ page }) => {
+test('native Tab respects the source limit, Tab Moves Focus leaves the editor, and mobile export stays accessible', async ({ page }) => {
   await page.goto('/#workspace');
   await editorReady(page);
   const text = 'x'.repeat(99999);
   await fillSource(page, text);
   await sourceEditor(page).press('Control+End');
   await sourceEditor(page).press('Tab');
-  await expectSource(page, text);
+  await expectSource(page, text + ' ');
+  await sourceEditor(page).press('Control+End');
+  await sourceEditor(page).press('Tab');
+  await expectSource(page, text + ' ');
+  await sourceEditor(page).press('Control+m');
   await sourceEditor(page).press('Shift+Tab');
   await expect(sourceEditor(page)).not.toBeFocused();
+  await sourceEditor(page).press('Control+m');
   await fillSource(page, 'abcd');
   await sourceEditor(page).press('Control+Home');
   await sourceEditor(page).press('ArrowRight');

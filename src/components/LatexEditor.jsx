@@ -30,36 +30,7 @@ export default function LatexEditor({
   const [attempt, setAttempt] = useState(0);
 
   function shortcut(event) {
-    if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      const instance = editor.current;
-      if (instance) {
-        const lines = instance.getSelections().reduce((count, range) => count + range.endLineNumber - range.startLineNumber + 1, 0);
-        if (instance.getModel().getValueLength() + lines * 2 > 100000) {
-          event.preventDefault();
-          event.stopPropagation();
-          setError('Source must be valid text, at most 100,000 characters. The last edit was not accepted.');
-        }
-      } else if (fallback.current && !loading && !readOnly) {
-        event.preventDefault();
-        const input = fallback.current;
-        if (input.value.length - (input.selectionEnd - input.selectionStart) + 2 <= 100000) {
-          const position = input.selectionStart + 2;
-          const next = input.value.slice(0, input.selectionStart) + '  ' + input.value.slice(input.selectionEnd);
-          onChange(next);
-          requestAnimationFrame(() => input.setSelectionRange(position, position));
-        }
-      }
-      return;
-    }
-    if (event.key === 'Tab' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      const controls = [...document.querySelectorAll('button,a[href],input,textarea,[tabindex="0"]')]
-        .filter(control => !control.disabled && control.getClientRects().length && !control.closest('[inert]'));
-      const before = controls.filter(control => !event.currentTarget.contains(control) &&
-        Boolean(control.compareDocumentPosition(event.currentTarget) & Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);
-      if (before) { event.preventDefault(); event.stopPropagation(); before.focus(); }
-      return;
-    }
-    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
     const key = event.key.toLowerCase();
     if (key !== 's' && key !== 'enter') return;
     event.preventDefault();
@@ -87,7 +58,7 @@ export default function LatexEditor({
         domReadOnly: true,
         fontFamily: '"Cascadia Code", Consolas, "Liberation Mono", monospace',
         ...editorMetrics(host.current), tabSize: 2, insertSpaces: true,
-        minimap: { enabled: false }, wordWrap: 'off',
+        minimap: { enabled: false }, wordWrap: 'on',
         scrollBeyondLastLine: false, folding: false, glyphMargin: false,
         lineNumbersMinChars: 3, overviewRulerLanes: 0, hideCursorInOverviewRuler: true,
         renderLineHighlight: 'line', selectionHighlight: false, occurrencesHighlight: 'off',
@@ -99,7 +70,7 @@ export default function LatexEditor({
         unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
         accessibilitySupport: 'on', editContext: false,
         tabIndex: 0, padding: { top: 12, bottom: 16 },
-        automaticLayout: false, contextmenu: false,
+        automaticLayout: false, contextmenu: true,
         stopRenderingLineAfter: 2000, largeFileOptimizations: true,
         scrollbar: { alwaysConsumeMouseWheel: false, verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
       });

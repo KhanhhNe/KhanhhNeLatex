@@ -1,6 +1,25 @@
 import { test, expect } from '@playwright/test';
 import { editorReady, sourceEditor, fillSource, expectSource, readSource } from './source-editor.js';
 
+async function nativeState(page) {
+  return page.evaluate(async () => {
+    const url = performance.getEntriesByType('resource').map(entry => entry.name)
+      .find(url => /\/assets\/monaco-[^/]+\.js$/.test(url));
+    const exports = await import(url);
+    const monaco = Object.values(exports).find(value => value.editor?.getEditors);
+    const editor = monaco.editor.getEditors()[0];
+    return {
+      source: editor.getValue(),
+      selections: editor.getSelections(),
+      actions: editor.getSupportedActions().map(action => action.id),
+      wrap: editor.getOption(monaco.editor.EditorOption.wordWrap),
+    };
+  });
+}
+
+const expectNativeSource = async (page, source) =>
+  expect.poll(async () => (await nativeState(page)).source).toBe(source);
+
 test('Monaco preserves controlled editing, selection, undo, full clipboard and original LaTeX highlighting', async ({ page }) => {
   const external = [], errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -38,10 +57,108 @@ test('Monaco preserves controlled editing, selection, undo, full clipboard and o
   await expect(page.getByRole('status').filter({ hasText: 'Saved on this device' })).toBeVisible();
   await page.reload();
   await expectSource(page, '\\textbf{Full paste}\nsecond line');
+  await sourceEditor(page).press('Control+m');
   await sourceEditor(page).press('Shift+Tab');
   await expect(sourceEditor(page)).not.toBeFocused();
   expect(external).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('native actions and default visual wrapping work; installed Monaco has no VS Code workbench Alt+Z action', async ({ page }) => {
+  await page.goto('/#workspace', { waitUntil: 'domcontentloaded' });
+  const source = 'long source text '.repeat(60);
+  await fillSource(page, source);
+  const state = await nativeState(page);
+  expect(state.actions).toEqual(expect.arrayContaining([
+    'editor.action.quickCommand', 'editor.action.gotoLine', 'editor.action.commentLine',
+    'editor.action.moveLinesDownAction', 'editor.action.copyLinesDownAction',
+    'editor.action.addSelectionToNextFindMatch', 'editor.action.indentLines',
+    'editor.action.outdentLines', 'editor.action.smartSelect.expand', 'expandLineSelection',
+    'actions.find', 'editor.action.startFindReplaceAction',
+  ]));
+  expect(state.actions).not.toContain('editor.action.toggleWordWrap');
+  expect(state.wrap).toBe('on');
+  await expect.poll(() => page.locator('.view-lines .view-line').count()).toBeGreaterThan(1);
+  const before = await page.locator('.view-lines .view-line').count();
+  await page.setViewportSize({ width: 1100, height: 1000 });
+  await expect.poll(() => page.locator('.view-lines .view-line').count()).toBeGreaterThan(before);
+  await sourceEditor(page).press('Alt+z');
+  await sourceEditor(page).press('Alt+z');
+  expect((await nativeState(page)).wrap).toBe('on');
+  await expectNativeSource(page, source);
+});
+
+test('native indentation, comments, line operations, multi-cursors and navigation receive focused keys', async ({ page }) => {
+  await page.goto('/#workspace', { waitUntil: 'domcontentloaded' });
+  await fillSource(page, 'alpha\nbeta');
+  await sourceEditor(page).press('Control+a');
+  await sourceEditor(page).press('Tab');
+  await expectNativeSource(page, '  alpha\n  beta');
+  await sourceEditor(page).press('Shift+Tab');
+  await expectNativeSource(page, 'alpha\nbeta');
+  await expect(sourceEditor(page)).toBeFocused();
+  await sourceEditor(page).press('Control+/');
+  await expectNativeSource(page, '% alpha\n% beta');
+  await sourceEditor(page).press('Control+/');
+  await expectNativeSource(page, 'alpha\nbeta');
+  await sourceEditor(page).press('Control+Home');
+  await sourceEditor(page).press('Alt+ArrowDown');
+  await expectNativeSource(page, 'beta\nalpha');
+  const linux = await page.evaluate(() => /Linux/.test(navigator.platform));
+  await sourceEditor(page).press(linux ? 'Control+Alt+Shift+ArrowDown' : 'Alt+Shift+ArrowDown');
+  await expectNativeSource(page, 'beta\nalpha\nalpha');
+  await sourceEditor(page).press('Control+z');
+  await expectNativeSource(page, 'beta\nalpha');
+  await sourceEditor(page).press('Control+Shift+z');
+  await expectNativeSource(page, 'beta\nalpha\nalpha');
+  await fillSource(page, 'alpha beta alpha');
+  await sourceEditor(page).press('Control+Home');
+  await sourceEditor(page).press('Control+d');
+  await sourceEditor(page).press('Control+d');
+  expect((await nativeState(page)).selections).toHaveLength(2);
+  await page.keyboard.insertText('gamma');
+  await expectNativeSource(page, 'gamma beta gamma');
+  await sourceEditor(page).press('Escape');
+  await sourceEditor(page).press('Control+Home');
+  await sourceEditor(page).press('Control+Shift+ArrowRight');
+  const [selection] = (await nativeState(page)).selections;
+  expect((await nativeState(page)).source.slice(selection.startColumn - 1, selection.endColumn - 1).trim()).toBe('gamma');
+  await sourceEditor(page).press('Control+Shift+Enter');
+  await expectNativeSource(page, '\ngamma beta gamma');
+  await sourceEditor(page).press('Control+m');
+  await sourceEditor(page).press('Shift+Tab');
+  await expect(sourceEditor(page)).not.toBeFocused();
+});
+
+test('native command palette, go to line and find/replace widgets work without app shortcut dispatch', async ({ page }) => {
+  await page.goto('/#workspace', { waitUntil: 'domcontentloaded' });
+  await fillSource(page, 'alpha\nbeta alpha');
+  await sourceEditor(page).press('F1');
+  const commands = page.locator('.quick-input-widget');
+  await expect(commands).toBeVisible();
+  await commands.getByRole('textbox').fill('>Move Line Up');
+  await commands.getByRole('option', { name: /^Move Line Up,/ }).click();
+  await expectNativeSource(page, 'beta alpha\nalpha');
+  await sourceEditor(page).press('Control+g');
+  await expect(commands).toBeVisible();
+  await commands.getByRole('textbox').fill(':2');
+  await commands.getByRole('textbox').press('Enter');
+  expect((await nativeState(page)).selections[0].startLineNumber).toBe(2);
+  await sourceEditor(page).press('Control+f');
+  const find = page.getByRole('textbox', { name: 'Find', exact: true });
+  await expect(find).toBeFocused();
+  await find.fill('alpha');
+  await find.press('Escape');
+  await expect(sourceEditor(page)).toBeFocused();
+  await sourceEditor(page).press('Control+h');
+  const replace = page.getByRole('textbox', { name: 'Replace', exact: true });
+  await expect(replace).toBeVisible();
+  await find.fill('alpha');
+  await replace.fill('gamma');
+  await page.getByRole('button', { name: /Replace All/ }).click();
+  await expectNativeSource(page, 'beta gamma\ngamma');
+  await replace.press('Escape');
+  await expect(sourceEditor(page)).toBeFocused();
 });
 
 test('Monaco rejects oversized and non-text edits without losing accepted source or undo', async ({ page }) => {
