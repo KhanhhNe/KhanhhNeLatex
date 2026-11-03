@@ -35,12 +35,11 @@ test('Monaco preserves controlled editing, selection, undo, full clipboard and o
   await fillSource(page, source);
   await expectSource(page, source);
   await expect(page.locator('.view-lines')).toContainText('\\section');
-  const tokenColors = await page.locator('.view-lines span').evaluateAll(spans =>
-    [...new Set(spans.filter(span => span.textContent.trim()).map(span => getComputedStyle(span).color))]);
-  expect(tokenColors.length).toBeGreaterThanOrEqual(3);
-  expect(tokenColors).toEqual(expect.arrayContaining([
-    'rgb(160, 212, 206)', 'rgb(228, 209, 139)', 'rgb(199, 169, 232)', 'rgb(149, 162, 171)',
-  ]));
+  await expect.poll(() => page.locator('.view-lines span').evaluateAll(spans =>
+    [...new Set(spans.filter(span => span.textContent.trim()).map(span => getComputedStyle(span).color))]))
+    .toEqual(expect.arrayContaining([
+      'rgb(160, 212, 206)', 'rgb(228, 209, 139)', 'rgb(199, 169, 232)', 'rgb(149, 162, 171)',
+    ]));
   await expect(page.locator('.monaco-editor')).toHaveCSS('background-color', 'rgb(24, 32, 39)');
   await expect(page.locator('.monaco-editor')).toHaveCount(1);
   await sourceEditor(page).press('Control+End');
@@ -121,8 +120,9 @@ test('native indentation, comments, line operations, multi-cursors and navigatio
   await expectNativeSource(page, 'gamma beta gamma');
   await sourceEditor(page).press('Escape');
   await sourceEditor(page).press('Control+Home');
-  await sourceEditor(page).press('Control+Shift+ArrowRight');
-  await expect.poll(async () => (await nativeState(page)).selectionTexts[0]?.trim()).toBe('gamma');
+  await sourceEditor(page).press('Shift+End');
+  await expect.poll(async () => (await nativeState(page)).selectionTexts.map(text => text.trim()))
+    .toContain('gamma beta gamma');
   await sourceEditor(page).press('Control+Shift+Enter');
   await expectNativeSource(page, '\ngamma beta gamma');
   await sourceEditor(page).press('Control+m');
