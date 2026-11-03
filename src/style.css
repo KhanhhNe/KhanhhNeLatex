@@ -295,7 +295,8 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
   .workspace-view .preview-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;align-items:center}
   .workspace-view .preview-panel:has(.preview-bottom:not([hidden])) .pdf-zoom-toolbar{bottom:44px}
   .workspace-view .compile-log-slot{min-width:72px}
-  .workspace-view .compile-log-slot .compile-log{width:72px;padding:0 8px}
+  .workspace-view .compile-log-slot .compile-log{padding:0 8px}
+  .workspace-view .compile-log-slot .compile-log:not([open]){width:72px}
   .workspace-view .sidebar{z-index:5}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

@@ -75,6 +75,7 @@ for (const colorScheme of ['light', 'dark']) {
         } else await details.locator('summary').click();
         const log = details.locator('pre');
         await expect(log).toBeVisible();
+        if (mobile) expect((await details.boundingBox()).width).toBeGreaterThanOrEqual(380);
         await expect(log.locator('.log-warning').filter({ hasText: 'Package demo Warning:' })).toContainText('(demo)');
         await expect(log.locator('.log-warning').filter({ hasText: 'LaTeX Warning:' }).first()).toBeVisible();
         await expect(log.locator('.log-error')).toHaveCount(0);
