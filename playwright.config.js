@@ -3,7 +3,7 @@ export default defineConfig({
   testDir: './tests/browser',
   timeout: 90000,
   fullyParallel: false,
-  workers: 1,
+  workers: process.env.CI ? 2 : 1,
   reporter: process.env.CI ? [
     ['dot'],
     ['json', { outputFile: 'test-results/results.json' }],
@@ -15,7 +15,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: process.env.BASE_URL ? undefined : {
-    command: 'npm run build && npm run preview',
+    command: process.env.PLAYWRIGHT_SKIP_BUILD === '1' ? 'npm run preview' : 'npm run build && npm run preview',
     url: 'http://127.0.0.1:8787/api/health',
     reuseExistingServer: !process.env.CI,
     timeout: 60000,

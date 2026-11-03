@@ -31,10 +31,12 @@ jobs:
       - run: npm run build
       - run: npm run db:local
       - run: npm run test:e2e
+        id: e2e
         env:
           CI: true
+          PLAYWRIGHT_SKIP_BUILD: '1'
       - name: Upload browser timing and failure evidence
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.e2e.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results
