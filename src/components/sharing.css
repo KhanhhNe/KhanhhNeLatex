@@ -14,11 +14,16 @@
 .shared-panels .latex-editor{flex:1}
 .shared-footer{padding:4px 12px;border-top:1px solid var(--border)}
 .shared-footer p{margin:4px 0;font-size:.75rem}
+.shared-document .pdf-zoom-toolbar button,.shared-document .pdf-zoom-toolbar a{min-width:24px;min-height:24px}
 .shared-footer .compile-log pre{max-height:160px;overflow:auto}
 @media(max-width:1050px){
+  .shared-document .pdf-zoom-toolbar button,.shared-document .pdf-zoom-toolbar a{min-width:44px;min-height:44px}
   .shared-toolbar{gap:6px}
   .shared-actions{width:100%;justify-content:space-between}
   .shared-actions button{padding:6px 8px;font-size:.75rem}
   .shared-panels.show-source>.preview-panel{display:none}
   .shared-heading h1{font-size:.9375rem}
+}
+@media(pointer:coarse){
+  .shared-document .pdf-zoom-toolbar button,.shared-document .pdf-zoom-toolbar a{min-width:44px;min-height:44px}
 }

@@ -58,6 +58,7 @@ function App() {
   const [log, setLog] = useState('');
   const [pdf, setPdf] = useState(null);
   const [pendingPdf, setPendingPdf] = useState(null);
+  const [pageStatus, setPageStatus] = useState(null);
   const [stale, setStale] = useState(false);
   const [mobile, setMobile] = useState(() => matchMedia('(max-width: 1050px)').matches);
   const [tab, setTab] = useState('preview');
@@ -1101,8 +1102,9 @@ function App() {
     download(latest.bytes, `${latest.title || 'document'}.pdf`, 'application/pdf');
   };
   const previewStatus = <div className="preview-status">
-    <span className="preview-status-reserve" aria-hidden="true" />
-    <div className="preview-status-message" role="status" aria-atomic="true"><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
+    <div className="preview-status-message" role="status" aria-atomic="true"
+      title={`${compileState}${pendingPdf ? ' / Loading new preview...' : ''}${pdf && stale ? ' / Preview is out of date' : ''}`}><span className={compiling ? 'working-dot' : 'status-dot'} /><span>{compileState}</span>{pendingPdf && <span> / Loading new preview...</span>}{pdf && stale && <strong> / Preview is out of date</strong>}</div>
+    {pdf && pageStatus?.url === pdf.url && <span className="preview-page-status">Page {pageStatus.page}/{pageStatus.total}</span>}
   </div>;
 
   return <div className="app">
@@ -1231,10 +1233,14 @@ function App() {
             title="Drag or use arrow keys to resize. Enter or double-click to reset." />
           <section id="preview-panel" ref={previewPanel} className={`preview-panel ${tab === 'preview' ? 'mobile-active' : ''}`} aria-label="PDF preview"
             onFocus={event => { if (event.target.closest('.pdf-zoom-toolbar')) setChromeHidden(false); }}>
-            {!mobile && previewStatus}
+            {!pdf && previewStatus}
             <div className="pdf-area">{pdf ? <div className="pdf-stack">{[pdf, pendingPdf].filter(Boolean).map(viewer =>
               <PdfPreview key={viewer.url} viewer={viewer} pending={viewer.url !== pdf.url}
-                viewState={previewView}
+                viewState={previewView} status={previewStatus}
+                onPageChange={info => {
+                  if (shownPdf.current?.url !== viewer.url) return;
+                  setPageStatus(info ? { url: viewer.url, ...info } : null);
+                }}
                 onError={() => {
                   if (pendingViewer.current?.url !== viewer.url) return;
                   discardPendingViewer();
@@ -1250,7 +1256,7 @@ function App() {
             </div>
             <div className="preview-bottom" hidden={!showPreviewBar}>
               <div className="compile-log-slot"><details ref={compileLog} className="compile-log" open={compileState.includes('See compilation log.')}><summary aria-label={mobile ? 'Compilation log' : undefined}>{mobile ? 'Log' : 'Compilation log'}</summary><pre>{log || 'No compilation log available.'}</pre></details></div>
-              {mobile ? previewStatus : <div className="preview-footer"><span title={engineState}>{engineState}</span><label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label><button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>}
+              {!mobile && <div className="preview-footer"><span title={engineState}>{engineState}</span><label className="live-preview"><input type="checkbox" checked={live} onChange={event => toggleLive(event.target.checked)} /> Live preview</label><button className="quiet" onClick={() => setShowHelp(true)} aria-label="Supported LaTeX" title="Supported LaTeX"><Icon name="help" /></button></div>}
             </div>
           </section>
         </div>
