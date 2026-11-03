@@ -113,6 +113,9 @@ kbd{font:.75rem ui-monospace,monospace;border:1px solid #555;border-radius:4px;p
 .compile-log-slot .compile-log[open]{width:auto;right:0;border-top:1px solid #3a444c}
 .compile-log summary{min-height:44px;display:list-item;padding:12px 0;cursor:pointer}
 .compile-log pre{white-space:pre-wrap;overflow-wrap:anywhere;font:.75rem/1.6 ui-monospace,monospace;color:#d0dbe3}
+.compile-log .log-error,.compile-log .log-warning{font-weight:600;box-decoration-break:clone;-webkit-box-decoration-break:clone;padding-inline:4px;border-inline-start:3px solid}
+.compile-log .log-error{color:#ffb4b4;background:#462b32;border-color:#ffb4b4}
+.compile-log .log-warning{color:#ffe09a;background:#3e3524;border-color:#ffe09a;border-inline-start-style:dashed}
 .compile-log[open]{box-shadow:0 -4px 16px #0004}
 .preview-footer{flex:1;min-width:0;padding:0 8px;background:#232a30;color:#b7c1ca}
 .preview-footer>span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
